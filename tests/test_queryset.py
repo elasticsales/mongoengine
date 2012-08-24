@@ -624,7 +624,7 @@ class QuerySetTest(unittest.TestCase):
             fresh_o1 = Organization.objects.get(id=o1.id)
             fresh_o1.save()
 
-            self.assertEquals(q, 2)
+            self.assertEqual(q, 2)
 
         with query_counter() as q:
             self.assertEqual(q, 0)
@@ -632,7 +632,7 @@ class QuerySetTest(unittest.TestCase):
             fresh_o1 = Organization.objects.get(id=o1.id)
             fresh_o1.save(cascade=False)
 
-            self.assertEquals(q, 2)
+            self.assertEqual(q, 2)
 
         with query_counter() as q:
             self.assertEqual(q, 0)
@@ -641,7 +641,7 @@ class QuerySetTest(unittest.TestCase):
             fresh_o1.employees.append(p2)
             fresh_o1.save(cascade=False)
 
-            self.assertEquals(q, 3)
+            self.assertEqual(q, 3)
 
     def test_slave_okay(self):
         """Ensures that a query can take slave_okay syntax
@@ -2341,7 +2341,7 @@ class QuerySetTest(unittest.TestCase):
         foo = Foo(bar=bar)
         foo.save()
 
-        self.assertEquals(Foo.objects.distinct("bar"), [bar])
+        self.assertEqual(Foo.objects.distinct("bar"), [bar])
 
     def test_custom_manager(self):
         """Ensure that custom QuerySetManager instances work as expected.
@@ -2523,6 +2523,24 @@ class QuerySetTest(unittest.TestCase):
         self.assertFalse([('_types', 1)] in info.values())
 
         BlogPost.drop_collection()
+
+    def test_types_index_with_pk(self):
+
+        class Comment(EmbeddedDocument):
+            comment_id = IntField(required=True)
+
+        try:
+            class BlogPost(Document):
+                comments = EmbeddedDocumentField(Comment)
+                meta = {'indexes': [{'fields': ['pk', 'comments.comment_id'],
+                    'unique': True}]}
+        except UnboundLocalError:
+            self.fail('Unbound local error at types index + pk definition')
+
+        info = BlogPost.objects._collection.index_information()
+        info = [value['key'] for key, value in info.iteritems()]
+        index_item = [(u'_types', 1), (u'_id', 1), (u'comments.comment_id', 1)]
+        self.assertTrue(index_item in info)
 
     def test_dict_with_custom_baseclass(self):
         """Ensure DictField working with custom base clases.
