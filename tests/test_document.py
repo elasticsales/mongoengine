@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import with_statement
 import bson
 import os
@@ -7,6 +8,7 @@ import sys
 import unittest
 import uuid
 import warnings
+import operator
 
 from nose.plugins.skip import SkipTest
 from datetime import datetime
@@ -14,7 +16,7 @@ from datetime import datetime
 from tests.fixtures import Base, Mixin, PickleEmbedded, PickleTest
 
 from mongoengine import *
-from mongoengine.base import NotRegistered, InvalidDocumentError
+from mongoengine.base import NotRegistered, InvalidDocumentError, get_document
 from mongoengine.queryset import InvalidQueryError
 from mongoengine.connection import get_db, get_connection
 
@@ -84,6 +86,22 @@ class DocumentTest(unittest.TestCase):
         self.assertTrue('name' in fields and 'age' in fields)
         # Ensure Document isn't treated like an actual document
         self.assertFalse(hasattr(Document, '_fields'))
+
+    def test_repr(self):
+        """Ensure that unicode representation works
+        """
+        class Article(Document):
+            title = StringField()
+
+            def __unicode__(self):
+                return self.title
+
+        Article.drop_collection()
+
+        Article(title=u'привет мир').save()
+
+        self.assertEqual('<Article: привет мир>', repr(Article.objects.first()))
+        self.assertEqual('[<Article: привет мир>]', repr(Article.objects.all()))
 
     def test_collection_naming(self):
         """Ensure that a collection with a specified name may be used.
@@ -435,7 +453,8 @@ class DocumentTest(unittest.TestCase):
 
         info = collection.index_information()
         info = [value['key'] for key, value in info.iteritems()]
-        self.assertEqual([[(u'_id', 1)], [(u'_types', 1), (u'name', 1)]], info)
+        self.assertEqual([[('_id', 1)], [('_types', 1), ('name', 1)]],
+                         sorted(info, key=operator.itemgetter(0)))
 
         # Turn off inheritance
         class Animal(Document):
@@ -456,7 +475,8 @@ class DocumentTest(unittest.TestCase):
 
         info = collection.index_information()
         info = [value['key'] for key, value in info.iteritems()]
-        self.assertEqual([[(u'_id', 1)], [(u'_types', 1), (u'name', 1)]], info)
+        self.assertEqual([[(u'_id', 1)], [(u'_types', 1), (u'name', 1)]],
+            sorted(info, key=operator.itemgetter(0)))
 
         info = collection.index_information()
         indexes_to_drop = [key for key, value in info.iteritems() if '_types' in dict(value['key'])]
@@ -465,14 +485,16 @@ class DocumentTest(unittest.TestCase):
 
         info = collection.index_information()
         info = [value['key'] for key, value in info.iteritems()]
-        self.assertEqual([[(u'_id', 1)]], info)
+        self.assertEqual([[(u'_id', 1)]],
+            sorted(info, key=operator.itemgetter(0)))
 
         # Recreate indexes
         dog = Animal.objects.first()
         dog.save()
         info = collection.index_information()
         info = [value['key'] for key, value in info.iteritems()]
-        self.assertEqual([[(u'_id', 1)], [(u'name', 1),]], info)
+        self.assertEqual([[(u'_id', 1)], [(u'name', 1),]],
+            sorted(info, key=operator.itemgetter(0)))
 
         Animal.drop_collection()
 
@@ -907,7 +929,7 @@ class DocumentTest(unittest.TestCase):
 
         self.assertEqual(1, Person.objects.count())
         info = Person.objects._collection.index_information()
-        self.assertEqual(info.keys(), ['_types_1_user_guid_1', '_id_', '_types_1_name_1'])
+        self.assertEqual(sorted(info.keys()), ['_id_', '_types_1_name_1', '_types_1_user_guid_1'])
         Person.drop_collection()
 
     def test_disable_index_creation(self):
@@ -951,7 +973,7 @@ class DocumentTest(unittest.TestCase):
         BlogPost.drop_collection()
 
         info = BlogPost.objects._collection.index_information()
-        self.assertEqual(info.keys(), ['_types_1_date.yr_-1', '_id_'])
+        self.assertEqual(sorted(info.keys()), [ '_id_', '_types_1_date.yr_-1'])
         BlogPost.drop_collection()
 
     def test_list_embedded_document_index(self):
@@ -974,7 +996,8 @@ class DocumentTest(unittest.TestCase):
 
         info = BlogPost.objects._collection.index_information()
         # we don't use _types in with list fields by default
-        self.assertEqual(info.keys(), ['_id_', '_types_1', 'tags.tag_1'])
+        self.assertEqual(sorted(info.keys()),
+                         ['_id_', '_types_1', 'tags.tag_1'])
 
         post1 = BlogPost(title="Embedded Indexes tests in place",
                         tags=[Tag(name="about"), Tag(name="time")]
@@ -991,7 +1014,7 @@ class DocumentTest(unittest.TestCase):
             recursive_obj = EmbeddedDocumentField(RecursiveObject)
 
         info = RecursiveDocument.objects._collection.index_information()
-        self.assertEqual(info.keys(), ['_id_', '_types_1'])
+        self.assertEqual(sorted(info.keys()), ['_id_', '_types_1'])
 
     def test_geo_indexes_recursion(self):
 
@@ -1319,7 +1342,6 @@ class DocumentTest(unittest.TestCase):
 
         User.drop_collection()
 
-
     def test_document_not_registered(self):
 
         class Place(Document):
@@ -1344,6 +1366,19 @@ class DocumentTest(unittest.TestCase):
             print Place.objects.all()
         self.assertRaises(NotRegistered, query_without_importing_nice_place)
 
+    def test_document_registry_regressions(self):
+
+        class Location(Document):
+            name = StringField()
+            meta = {'allow_inheritance': True}
+
+        class Area(Location):
+            location = ReferenceField('Location', dbref=True)
+
+        Location.drop_collection()
+
+        self.assertEquals(Area, get_document("Area"))
+        self.assertEquals(Area, get_document("Location.Area"))
 
     def test_creation(self):
         """Ensure that document may be created using keyword arguments.
@@ -2690,7 +2725,7 @@ class DocumentTest(unittest.TestCase):
 
         Person.drop_collection()
 
-        self.assertEqual(Person._fields.keys(), ['name', 'id'])
+        self.assertEqual(sorted(Person._fields.keys()), ['id', 'name'])
 
         Person(name="Rozza").save()
 
@@ -3382,8 +3417,8 @@ class ValidatorErrorTest(unittest.TestCase):
         try:
             User().validate()
         except ValidationError, e:
-            expected_error_message = """ValidationError(Field is required: ['username', 'name'])"""
-            self.assertEqual(e.message, expected_error_message)
+            expected_error_message = """ValidationError(Field is required"""
+            self.assertTrue(expected_error_message in e.message)
             self.assertEqual(e.to_dict(), {
                 'username': 'Field is required',
                 'name': 'Field is required'})
