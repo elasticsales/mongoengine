@@ -42,6 +42,12 @@ class FieldTest(unittest.TestCase):
             group_obj = Group.objects.first()
             self.assertEqual(q, 1)
 
+            len(group_obj._data['members'])
+            self.assertEqual(q, 1)
+
+            len(group_obj.members)
+            self.assertEqual(q, 2)
+
             [m for m in group_obj.members]
             self.assertEqual(q, 2)
 
@@ -84,6 +90,7 @@ class FieldTest(unittest.TestCase):
 
         group = Group(members=User.objects)
         group.save()
+        group.reload()  # Confirm reload works
 
         with query_counter() as q:
             self.assertEqual(q, 0)

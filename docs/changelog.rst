@@ -2,6 +2,32 @@
 Changelog
 =========
 
+Changes in 0.7.9
+================
+- Better fix handling for old style _types
+- Embedded SequenceFields follow collection naming convention
+
+Changes in 0.7.8
+================
+- Fix sequence fields in embedded documents (MongoEngine/mongoengine#166)
+- Fix query chaining with .order_by() (MongoEngine/mongoengine#176)
+- Added optional encoding and collection config for Django sessions (MongoEngine/mongoengine#180, MongoEngine/mongoengine#181, MongoEngine/mongoengine#183)
+- Fixed EmailField so can add extra validation (MongoEngine/mongoengine#173, MongoEngine/mongoengine#174, MongoEngine/mongoengine#187)
+- Fixed bulk inserts can now handle custom pk's (MongoEngine/mongoengine#192)
+- Added as_pymongo method to return raw or cast results from pymongo (MongoEngine/mongoengine#193)
+
+Changes in 0.7.7
+================
+- Fix handling for old style _types
+
+Changes in 0.7.6
+================
+- Unicode fix for repr (MongoEngine/mongoengine#133)
+- Allow updates with match operators (MongoEngine/mongoengine#144)
+- Updated URLField - now can have a override the regex (MongoEngine/mongoengine#136)
+- Allow Django AuthenticationBackends to work with Django user (hmarr/mongoengine#573)
+- Fixed reload issue with ReferenceField where dbref=False (MongoEngine/mongoengine#138)
+
 Changes in 0.7.5
 ================
 - ReferenceFields with dbref=False use ObjectId instead of strings (MongoEngine/mongoengine#134)

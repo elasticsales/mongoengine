@@ -47,7 +47,7 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual(QuerySet._transform_query(age__gt=20, age__lt=50),
                          {'age': {'$gt': 20, '$lt': 50}})
         self.assertEqual(QuerySet._transform_query(age=20, age__gt=50),
-                         {'age': 20})
+                         {'$and': [{'age': {'$gt': 50}}, {'age': 20}]})
         self.assertEqual(QuerySet._transform_query(friend__age__gte=30),
                          {'friend.age': {'$gte': 30}})
         self.assertEqual(QuerySet._transform_query(name__exists=True),
@@ -229,6 +229,49 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual(len(query), 0)
 
         Blog.drop_collection()
+
+    def test_chaining(self):
+        class A(Document):
+            pass
+
+        class B(Document):
+            a = ReferenceField(A)
+
+        A.drop_collection()
+        B.drop_collection()
+
+        a1 = A().save()
+        a2 = A().save()
+
+        B(a=a1).save()
+
+        q1 = B.objects.filter(a__in=[a1, a2], a=a1)
+
+        q2 = B.objects.filter(a__in=[a1, a2])
+        q2.filter(a=a1)
+
+        self.assertEqual(list(q1), list(q2))
+    
+
+    def test_duplicate_query_field(self):
+        class A(Document):
+            pass
+
+        class B(Document):
+            a = ReferenceField(A)
+
+        A.drop_collection()
+        B.drop_collection()
+
+        a1 = A().save()
+        a2 = A().save()
+
+        B(a=a1).save()
+
+        q1 = B.objects.filter(a=a1)
+        q1.filter(a=a2)
+
+        self.assertEqual(q1.count(), 0)
 
     def test_update_write_options(self):
         """Test that passing write_options works"""
@@ -414,6 +457,30 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual(post.comments[0].by, 'joe')
         self.assertEqual(post.comments[0].votes.score, 4)
 
+    def test_updates_can_have_match_operators(self):
+
+        class Post(Document):
+            title = StringField(required=True)
+            tags = ListField(StringField())
+            comments = ListField(EmbeddedDocumentField("Comment"))
+
+        class Comment(EmbeddedDocument):
+            content = StringField()
+            name = StringField(max_length=120)
+            vote = IntField()
+
+        Post.drop_collection()
+
+        comm1 = Comment(content="very funny indeed", name="John S", vote=1)
+        comm2 = Comment(content="kind of funny", name="Mark P", vote=0)
+
+        Post(title='Fun with MongoEngine', tags=['mongodb', 'mongoengine'],
+             comments=[comm1, comm2]).save()
+
+        Post.objects().update_one(pull__comments__vote__lt=1)
+
+        self.assertEqual(1, len(Post.objects.first().comments))
+
     def test_mapfield_update(self):
         """Ensure that the MapField can be updated."""
         class Member(EmbeddedDocument):
@@ -542,6 +609,10 @@ class QuerySetTest(unittest.TestCase):
             Blog.objects.insert(blogs)
 
         self.assertRaises(OperationError, throw_operation_error)
+
+        # Test can insert new doc
+        new_post = Blog(title="code", id=ObjectId())
+        Blog.objects.insert(new_post)
 
         # test handles other classes being inserted
         def throw_operation_error_wrong_doc():
@@ -1884,6 +1955,22 @@ class QuerySetTest(unittest.TestCase):
 
         ages = [p.age for p in self.Person.objects.order_by('-name')]
         self.assertEqual(ages, [30, 40, 20])
+
+    def test_order_by_chaining(self):
+        """Ensure that an order_by query chains properly and allows .only()
+        """
+        self.Person(name="User A", age=20).save()
+        self.Person(name="User B", age=40).save()
+        self.Person(name="User C", age=30).save()
+
+        only_age = self.Person.objects.order_by('-age').only('age')
+
+        names = [p.name for p in only_age]
+        ages = [p.age for p in only_age]
+
+        # The .only('age') clause should mean that all names are None
+        self.assertEqual(names, [None, None, None])
+        self.assertEqual(ages, [40, 30, 20])
 
     def test_confirm_order_by_reference_wont_work(self):
         """Ordering by reference is not possible.  Use map / reduce.. or
@@ -3446,11 +3533,9 @@ class QTest(unittest.TestCase):
             x = IntField()
             y = StringField()
 
-        # Check than an error is raised when conflicting queries are anded
-        def invalid_combination():
-            query = Q(x__lt=7) & Q(x__lt=3)
-            query.to_query(TestDoc)
-        self.assertRaises(InvalidQueryError, invalid_combination)
+        # Check than an error is not raised when conflicting queries are anded
+        query = Q(x__lt=7) & Q(x__lt=3)
+        query.to_query(TestDoc)
 
         # Check normal cases work without an error
         query = Q(x__lt=7) & Q(x__gt=3)
@@ -3643,6 +3728,38 @@ class QueryFieldListTest(unittest.TestCase):
         ak = list(Bar.objects(foo__match={'shape': "square", "color": "purple"}))
         self.assertEqual([b1], ak)
 
+    def test_as_pymongo(self):
+
+        from decimal import Decimal
+
+        class User(Document):
+            id = ObjectIdField('_id')
+            name = StringField()
+            age = IntField()
+            price = DecimalField()
+
+        User.drop_collection()
+        User(name="Bob Dole", age=89, price=Decimal('1.11')).save()
+        User(name="Barack Obama", age=51, price=Decimal('2.22')).save()
+
+        users = User.objects.only('name', 'price').as_pymongo()
+        results = list(users)
+        self.assertTrue(isinstance(results[0], dict))
+        self.assertTrue(isinstance(results[1], dict))
+        self.assertEqual(results[0]['name'], 'Bob Dole')
+        self.assertEqual(results[0]['price'], '1.11')
+        self.assertEqual(results[1]['name'], 'Barack Obama')
+        self.assertEqual(results[1]['price'], '2.22')
+
+        # Test coerce_types
+        users = User.objects.only('name', 'price').as_pymongo(coerce_types=True)
+        results = list(users)
+        self.assertTrue(isinstance(results[0], dict))
+        self.assertTrue(isinstance(results[1], dict))
+        self.assertEqual(results[0]['name'], 'Bob Dole')
+        self.assertEqual(results[0]['price'], Decimal('1.11'))
+        self.assertEqual(results[1]['name'], 'Barack Obama')
+        self.assertEqual(results[1]['price'], Decimal('2.22'))
 
 if __name__ == '__main__':
     unittest.main()
