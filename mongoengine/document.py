@@ -3,6 +3,7 @@ import warnings
 import pymongo
 import re
 
+from pymongo.read_preferences import ReadPreference
 from bson.dbref import DBRef
 from mongoengine import signals
 from mongoengine.base import (DocumentMetaclass, TopLevelDocumentMetaclass,
@@ -420,7 +421,7 @@ class Document(BaseDocument):
         """
         id_field = self._meta['id_field']
         obj = self._qs.filter(**{id_field: self[id_field]}
-                              ).limit(1).select_related(max_depth=max_depth)
+                              ).read_preference(ReadPreference.PRIMARY).limit(1).select_related(max_depth=max_depth)
         if obj:
             obj = obj[0]
         else:
