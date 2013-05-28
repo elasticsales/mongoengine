@@ -71,7 +71,10 @@ class QuerySet(object):
         # If inheritance is allowed, only return instances and instances of
         # subclasses of the class being used
         if document._meta.get('allow_inheritance') is True:
-            self._initial_query = {"_cls": {"$in": self._document._subclasses}}
+            if len(self._document._subclasses) == 1:
+                self._initial_query = {"_cls": self._document._subclasses[0]}
+            else:
+                self._initial_query = {"_cls": {"$in": self._document._subclasses}}
             self._loaded_fields = QueryFieldList(always_include=['_cls'])
         self._cursor_obj = None
         self._limit = None
@@ -178,7 +181,6 @@ class QuerySet(object):
             try:
                 queryset._cursor_obj = queryset._cursor[key]
                 queryset._skip, queryset._limit = key.start, key.stop
-                queryset._limit
                 if key.start and key.stop:
                     queryset._limit = key.stop - key.start
             except IndexError, err:

@@ -26,7 +26,7 @@ class DuplicateQueryConditionsError(InvalidQueryError):
     pass
 
 class SimplificationVisitor(QNodeVisitor):
-    """Simplifies query trees by combinging unnecessary 'and' connection nodes
+    """Simplifies query trees by combining unnecessary 'and' connection nodes
     into a single Q-object.
     """
 
@@ -127,8 +127,7 @@ class QCombination(QNode):
             # If the child is a combination of the same type, we can merge its
             # children directly into this combinations children
             if isinstance(node, QCombination) and node.operation == operation:
-                # self.children += node.children
-                self.children.append(node)
+                self.children += node.children
             else:
                 self.children.append(node)
 
