@@ -27,8 +27,8 @@ except ImportError:
     Image = None
     ImageOps = None
 
-__all__ = ['StringField',  'URLField',  'EmailField',  'IntField',  'LongField',
-           'FloatField',  'DecimalField',  'BooleanField',  'DateTimeField',
+__all__ = ['StringField',  'URLField',  'EmailField',  'IntField',
+           'FloatField',  'BooleanField',  'DateTimeField',
            'ComplexDateTimeField',  'EmbeddedDocumentField', 'ObjectIdField',
            'GenericEmbeddedDocumentField',  'DynamicField',  'ListField',
            'SortedListField',  'DictField',  'MapField',  'ReferenceField',
@@ -50,15 +50,6 @@ class StringField(BaseField):
         self.max_length = max_length
         self.min_length = min_length
         super(StringField, self).__init__(**kwargs)
-
-    def to_python(self, value):
-        if isinstance(value, unicode):
-            return value
-        try:
-            value = value.decode('utf-8')
-        except:
-            pass
-        return value
 
     def validate(self, value):
         if not isinstance(value, basestring):
@@ -114,8 +105,7 @@ class URLField(StringField):
         r'(?::\d+)?'  # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-    def __init__(self, verify_exists=False, url_regex=None, **kwargs):
-        self.verify_exists = verify_exists
+    def __init__(self, url_regex=None, **kwargs):
         self.url_regex = url_regex or self._URL_REGEX
         super(URLField, self).__init__(**kwargs)
 
@@ -124,50 +114,28 @@ class URLField(StringField):
             self.error('Invalid URL: %s' % value)
             return
 
-        if self.verify_exists:
-            warnings.warn(
-                "The URLField verify_exists argument has intractable security "
-                "and performance issues. Accordingly, it has been deprecated.",
-                DeprecationWarning)
-            try:
-                request = urllib2.Request(value)
-                urllib2.urlopen(request)
-            except Exception, e:
-                self.error('This URL appears to be a broken link: %s' % e)
-
 
 class EmailField(StringField):
-    """A field that validates input as an E-Mail-Address.
+    """A field that validates input as an email address.
 
     .. versionadded:: 0.4
     """
 
-    EMAIL_REGEX = re.compile(
-        r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
-        r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"'  # quoted-string
-        r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,253}[A-Z0-9])?\.)+[A-Z]{2,6}\.?$', re.IGNORECASE  # domain
-    )
+    EMAIL_REGEX = re.compile(r'^.+@[^.].*\.[a-z]{2,10}$', re.IGNORECASE)
 
     def validate(self, value):
         if not EmailField.EMAIL_REGEX.match(value):
-            self.error('Invalid Mail-address: %s' % value)
+            self.error('Invalid email address: %s' % value)
         super(EmailField, self).validate(value)
 
 
 class IntField(BaseField):
-    """An 32-bit integer field.
+    """An integer field.
     """
 
     def __init__(self, min_value=None, max_value=None, **kwargs):
         self.min_value, self.max_value = min_value, max_value
         super(IntField, self).__init__(**kwargs)
-
-    def to_python(self, value):
-        try:
-            value = int(value)
-        except ValueError:
-            pass
-        return value
 
     def validate(self, value):
         try:
@@ -181,61 +149,14 @@ class IntField(BaseField):
         if self.max_value is not None and value > self.max_value:
             self.error('Integer value is too large')
 
-    def prepare_query_value(self, op, value):
-        if value is None:
-            return value
-
-        return int(value)
-
-
-class LongField(BaseField):
-    """An 64-bit integer field.
-    """
-
-    def __init__(self, min_value=None, max_value=None, **kwargs):
-        self.min_value, self.max_value = min_value, max_value
-        super(LongField, self).__init__(**kwargs)
-
-    def to_python(self, value):
-        try:
-            value = long(value)
-        except ValueError:
-            pass
-        return value
-
-    def validate(self, value):
-        try:
-            value = long(value)
-        except:
-            self.error('%s could not be converted to long' % value)
-
-        if self.min_value is not None and value < self.min_value:
-            self.error('Long value is too small')
-
-        if self.max_value is not None and value > self.max_value:
-            self.error('Long value is too large')
-
-    def prepare_query_value(self, op, value):
-        if value is None:
-            return value
-
-        return long(value)
-
 
 class FloatField(BaseField):
-    """An floating point number field.
+    """A floating point number field.
     """
 
     def __init__(self, min_value=None, max_value=None, **kwargs):
         self.min_value, self.max_value = min_value, max_value
         super(FloatField, self).__init__(**kwargs)
-
-    def to_python(self, value):
-        try:
-            value = float(value)
-        except ValueError:
-            pass
-        return value
 
     def validate(self, value):
         if isinstance(value, int):
@@ -249,95 +170,12 @@ class FloatField(BaseField):
         if self.max_value is not None and value > self.max_value:
             self.error('Float value is too large')
 
-    def prepare_query_value(self, op, value):
-        if value is None:
-            return value
-
-        return float(value)
-
-
-class DecimalField(BaseField):
-    """A fixed-point decimal number field.
-
-    .. versionchanged:: 0.8
-    .. versionadded:: 0.3
-    """
-
-    def __init__(self, min_value=None, max_value=None, force_string=False,
-                 precision=2, rounding=decimal.ROUND_HALF_UP, **kwargs):
-        """
-        :param min_value: Validation rule for the minimum acceptable value.
-        :param max_value: Validation rule for the maximum acceptable value.
-        :param force_string: Store as a string.
-        :param precision: Number of decimal places to store.
-        :param rounding: The rounding rule from the python decimal libary:
-
-            - decimial.ROUND_CEILING (towards Infinity)
-            - decimial.ROUND_DOWN (towards zero)
-            - decimial.ROUND_FLOOR (towards -Infinity)
-            - decimial.ROUND_HALF_DOWN (to nearest with ties going towards zero)
-            - decimial.ROUND_HALF_EVEN (to nearest with ties going to nearest even integer)
-            - decimial.ROUND_HALF_UP (to nearest with ties going away from zero)
-            - decimial.ROUND_UP (away from zero)
-            - decimial.ROUND_05UP (away from zero if last digit after rounding towards zero would have been 0 or 5; otherwise towards zero)
-
-            Defaults to: ``decimal.ROUND_HALF_UP``
-
-        """
-        self.min_value = min_value
-        self.max_value = max_value
-        self.force_string = force_string
-        self.precision = decimal.Decimal(".%s" % ("0" * precision))
-        self.rounding = rounding
-
-        super(DecimalField, self).__init__(**kwargs)
-
-    def to_python(self, value):
-        if value is None:
-            return value
-
-        # Convert to string for python 2.6 before casting to Decimal
-        value = decimal.Decimal("%s" % value)
-        return value.quantize(self.precision, rounding=self.rounding)
-
-    def to_mongo(self, value):
-        if value is None:
-            return value
-        if self.force_string:
-            return unicode(value)
-        return float(self.to_python(value))
-
-    def validate(self, value):
-        if not isinstance(value, decimal.Decimal):
-            if not isinstance(value, basestring):
-                value = unicode(value)
-            try:
-                value = decimal.Decimal(value)
-            except Exception, exc:
-                self.error('Could not convert value to decimal: %s' % exc)
-
-        if self.min_value is not None and value < self.min_value:
-            self.error('Decimal value is too small')
-
-        if self.max_value is not None and value > self.max_value:
-            self.error('Decimal value is too large')
-
-    def prepare_query_value(self, op, value):
-        return self.to_mongo(value)
-
 
 class BooleanField(BaseField):
     """A boolean field type.
 
     .. versionadded:: 0.1.2
     """
-
-    def to_python(self, value):
-        try:
-            value = bool(value)
-        except ValueError:
-            pass
-        return value
 
     def validate(self, value):
         if not isinstance(value, bool):
@@ -357,8 +195,8 @@ class DateTimeField(BaseField):
         if not isinstance(value, (datetime.datetime, datetime.date)):
             self.error(u'cannot parse date "%s"' % value)
 
-    def to_mongo(self, value):
-        return self.prepare_query_value(None, value)
+    #def to_mongo(self, value):
+    #    return self.prepare_query_value(None, value)
 
     def prepare_query_value(self, op, value):
         if value is None:
@@ -521,15 +359,11 @@ class EmbeddedDocumentField(BaseField):
                 self.document_type_obj = get_document(self.document_type_obj)
         return self.document_type_obj
 
-    def to_python(self, value):
-        if not isinstance(value, self.document_type):
-            return self.document_type._from_son(value)
-        return value
+    def to_python(self, val):
+        return self.document_type._from_son(val)
 
-    def to_mongo(self, value):
-        if not isinstance(value, self.document_type):
-            return value
-        return self.document_type.to_mongo(value)
+    def to_mongo(self, val):
+        return val._to_son()
 
     def validate(self, value, clean=True):
         """Make sure that the document instance is an instance of the
@@ -563,9 +397,8 @@ class GenericEmbeddedDocumentField(BaseField):
         return self.to_mongo(value)
 
     def to_python(self, value):
-        if isinstance(value, dict):
-            doc_cls = get_document(value['_cls'])
-            value = doc_cls._from_son(value)
+        doc_cls = get_document(value['_cls'])
+        value = doc_cls._from_son(value)
 
         return value
 
@@ -580,7 +413,7 @@ class GenericEmbeddedDocumentField(BaseField):
         if document is None:
             return None
 
-        data = document.to_mongo()
+        data = document._to_son()
         if not '_cls' in data:
             data['_cls'] = document._class_name
         return data
@@ -648,10 +481,20 @@ class ListField(ComplexBaseField):
         Required means it cannot be empty - as the default for ListFields is []
     """
 
+    # TODO
+
     def __init__(self, field=None, **kwargs):
         self.field = field
         kwargs.setdefault('default', lambda: [])
         super(ListField, self).__init__(**kwargs)
+
+    def to_python(self, val):
+        to_python = getattr(self.field, 'to_python', None)
+        return [to_python(v) for v in val] if to_python else val
+
+    def to_mongo(self, val):
+        to_mongo = getattr(self.field, 'to_mongo', None)
+        return [to_mongo(v) for v in val] if to_mongo and val else val
 
     def validate(self, value):
         """Make sure that a list of valid fields is being used.
@@ -714,6 +557,8 @@ class DictField(ComplexBaseField):
     .. versionadded:: 0.3
     .. versionchanged:: 0.5 - Can now handle complex / varying types of data
     """
+
+    # TODO
 
     def __init__(self, basecls=None, field=None, *args, **kwargs):
         self.field = field
@@ -830,65 +675,46 @@ class ReferenceField(BaseField):
                 self.document_type_obj = get_document(self.document_type_obj)
         return self.document_type_obj
 
-    def __get__(self, instance, owner):
-        """Descriptor to allow lazy dereferencing.
-        """
-        if instance is None:
-            # Document class being used rather than a document object
-            return self
-
-        # Get value from document instance if available
-        value = instance._data.get(self.name)
-        self._auto_dereference = instance._fields[self.name]._auto_dereference
-        # Dereference DBRefs
-        if self._auto_dereference and isinstance(value, DBRef):
-            value = self.document_type._get_db().dereference(value)
-            if value is not None:
-                instance._data[self.name] = self.document_type._from_son(value)
-
-        return super(ReferenceField, self).__get__(instance, owner)
-
-    def to_mongo(self, document):
-        if isinstance(document, DBRef):
-            if not self.dbref:
-                return document.id
-            return document
-
-        id_field_name = self.document_type._meta['id_field']
-        id_field = self.document_type._fields[id_field_name]
-
-        if isinstance(document, Document):
+    def to_mongo(self, value):
+        if isinstance(value, DBRef):
+            if self.dbref:
+                return value
+            else:
+                return value.id
+        elif isinstance(value, Document):
+            document_type = self.document_type
             # We need the id from the saved object to create the DBRef
-            id_ = document.pk
-            if id_ is None:
+            pk = value.pk
+            if pk is None:
                 self.error('You can only reference documents once they have'
                            ' been saved to the database')
-        else:
-            id_ = document
-
-        id_ = id_field.to_mongo(id_)
-        if self.dbref:
-            collection = self.document_type._get_collection_name()
-            return DBRef(collection, id_)
-
-        return id_
+            id_field_name = document_type._meta['id_field']
+            id_field = document_type._fields[id_field_name]
+            pk = id_field.to_mongo(pk)
+            if self.dbref:
+                collection = document_type._get_collection_name()
+                return DBRef(collection, pk)
+            else:
+                return pk
+        elif value != None: # string ID
+            document_type = self.document_type
+            collection = document_type._get_collection_name()
+            return DBRef(collection, value)
 
     def to_python(self, value):
-        """Convert a MongoDB-compatible type to a Python type.
-        """
-        if (not self.dbref and
-           not isinstance(value, (DBRef, Document, EmbeddedDocument))):
-            collection = self.document_type._get_collection_name()
-            value = DBRef(collection, self.document_type.id.to_python(value))
-        return value
+        document_type = self.document_type
+        if self.dbref:
+            obj = document_type(pk=value.id)
+        else:
+            obj = document_type(pk=value)
+        obj._lazy = True
+        obj._created = True
+        return obj
 
     def prepare_query_value(self, op, value):
-        if value is None:
-            return None
         return self.to_mongo(value)
 
     def validate(self, value):
-
         if not isinstance(value, (self.document_type, DBRef)):
             self.error("A ReferenceField only accepts DBRef or documents")
 
