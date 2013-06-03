@@ -603,6 +603,39 @@ class QuerySet(object):
 
         return c
 
+    def fetch_related(self, field_dict):
+        """Recursively fetches related objects for the queryset.
+        Sample usage:
+
+            qs.fetch_related({
+                'user': True,
+                'lead': {
+                    'created_by': True,
+                    'updated_by': True,
+                }
+            })
+
+        In this sample, users and leads for all objs will be fetched and attached.
+        Then, created_by and updated_by users are fetched in one query and attached.
+        Note that the function doesn't merge queries for the same document class
+        across multiple (recursive) function calls, but it never fetches the same
+        related object twice.
+
+        To fetch all related fields, __all__ may be provided as a field name.
+        For example, the following is equivalent to
+        ``qs.select_related(max_depth=2)``:
+
+            qs.fetch_related({
+                '__all__': {
+                    '__all__': True,
+                }
+            })
+        """
+        from mongoengine.dereference import fetch_related
+        objs = [o for o in self]
+        fetch_related(objs, field_dict)
+        return objs
+
     def select_related(self, max_depth=1):
         """Handles dereferencing of :class:`~bson.dbref.DBRef` objects or
         :class:`~bson.object_id.ObjectId` a maximum depth in order to cut down
@@ -610,10 +643,10 @@ class QuerySet(object):
 
         .. versionadded:: 0.5
         """
-        # Make select related work the same for querysets
-        max_depth += 1
+
         queryset = self.clone()
-        return queryset._dereference(queryset, max_depth=max_depth)
+        f = lambda n: {'__all__': f(n-1) if n > 1 else True}
+        return self.fetch_related(f(max_depth))
 
     def limit(self, n):
         """Limit the number of returned documents to `n`. This may also be

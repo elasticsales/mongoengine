@@ -91,13 +91,15 @@ class Document(BaseDocument):
         cls.objects = QuerySetManager()
         id_field = cls._meta['id_field']
         cls._db_id_field = cls._rename_to_db.get(id_field, id_field)
-        cls._meta['collection'] = ''.join('_%s' % c if c.isupper() else c
-                                     for c in cls.__name__).strip('_').lower()
+        if not cls._meta.get('collection'):
+            cls._meta['collection'] = ''.join('_%s' % c if c.isupper() else c
+                                         for c in cls.__name__).strip('_').lower()
 
     @classmethod
     def _register_default_fields(cls):
-        id_field = cls._meta['id_field']
-        if id_field == 'id':
+        meta = cls._meta
+        id_field = meta['id_field']
+        if id_field == 'id' and 'id' not in cls._fields and not meta['abstract']:
             cls._fields['id'] = ObjectIdField(primary_key=True, db_field='_id')
 
     def pk():
@@ -119,7 +121,6 @@ class Document(BaseDocument):
 
     @classmethod
     def _get_collection_name(cls):
-        # TODO: make name nicer if not specified
         return cls._meta['collection']
 
     @classmethod
@@ -168,7 +169,6 @@ class Document(BaseDocument):
                 update_query['$unset'] = unsets
 
             if update_query:
-                print update_query
                 last_error = collection.update(self._db_object_key, update_query, **write_concern)
                 # TODO: evaluate last_error
         else:

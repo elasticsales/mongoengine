@@ -19,6 +19,10 @@ class BaseDocument(object):
         from mongoengine.document import Document, EmbeddedDocument
         from mongoengine.base.common import _registered_documents, _document_registry
 
+        if cls in _registered_documents:
+            # TODO: This is untested.
+            raise ValueError('Document is already registered.')
+
         # Registers the document class and caches fields and and field
         # functions. When any changes to fields are made the class must be
         # reregistered (untested).
@@ -38,8 +42,6 @@ class BaseDocument(object):
         class_name = [cls.__name__]
 
         bases = cls.__bases__
-
-        cls._register_default_fields()
 
         def populate_fields(cls, fields):
             for field_name in dir(cls):
@@ -61,6 +63,8 @@ class BaseDocument(object):
             populate_fields(cls, fields)
             _registered_documents.add(cls)
 
+        collection = None
+
         for base in bases:
             if issubclass(base, Document):
                 if not base in _registered_documents:
@@ -70,6 +74,9 @@ class BaseDocument(object):
 
                 if not base_meta['allow_inheritance'] and not base_meta['abstract']:
                     raise ValueError('Error registering %s: Document %s may not be subclassed' % (cls.__name__, base.__name__))
+
+                if not is_base_class and base_meta['allow_inheritance'] and not base_meta['abstract']:
+                    collection = base_meta['collection']
 
                 cls._meta.update(base_meta)
                 if not base_meta.get('abstract', True):
@@ -90,14 +97,24 @@ class BaseDocument(object):
             cls._meta.update({
                 'abstract': False,
                 'allow_inheritance': False,
+                'collection': collection,
             })
-        cls._meta.update(getattr(cls, 'meta', {}))
+        if 'meta' in cls.__dict__:
+            cls._meta.update(getattr(cls, 'meta'))
         cls._class_name = '.'.join(reversed(class_name))
 
         populate_fields(cls, fields)
 
         for field_name, field in fields.iteritems():
+            if field.primary_key:
+                cls._meta['id_field'] = field_name
+                break
+
+        cls._register_default_fields()
+
+        for field_name, field in fields.iteritems():
             db_field = field.db_field
+            field.name = field_name
             if db_field:
                 cls._rename_to_python[db_field] = field_name
                 cls._rename_to_db[field_name] = db_field
@@ -112,8 +129,7 @@ class BaseDocument(object):
 
         class subclasses(object):
             def __get__(self, instance, owner):
-                if instance == None:
-                    return [owner._class_name] + [cls._class_name for cls in _all_subclasses(owner) if issubclass(cls, Document)]
+                return [owner._class_name] + [cls._class_name for cls in _all_subclasses(owner) if issubclass(cls, Document)]
 
         cls._subclasses = subclasses()
 
@@ -161,8 +177,23 @@ class BaseDocument(object):
         if pk != None: # TODO: slow
             self.pk = pk
 
+    def __unicode__(self):
+        return u'%s object' % self.__class__.__name__
+
+    def __repr__(self):
+        return u'<%s: %s>' % (self.__class__.__name__, unicode(self))
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__) and hasattr(other, 'pk'):
+            if self.pk == other.pk:
+                return True
+        return False
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def to_dict(self):
-        return dict((field, getattr(self, field)) for field in self._fields)
+        return dict((field, self._get(field)) for field in self._fields)
 
     def _delta(self, full=False):
         sets = {}
@@ -219,7 +250,8 @@ class BaseDocument(object):
         return self._internal_data[attr]
 
     def __setattr__(self, attr, val):
-        if attr in self._fields:
-            self._internal_data[attr] = val
+        field = self._fields.get(attr, None)
+        if field:
+            self._internal_data[attr] = field.from_python(val)
         else:
             super(BaseDocument, self).__setattr__(attr, val)

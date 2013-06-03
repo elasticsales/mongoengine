@@ -23,12 +23,15 @@ class BaseField(object):
                  unique=False, unique_with=None, primary_key=False,
                  validation=None, choices=None, verbose_name=None,
                  help_text=None):
+        self.name = None # filled in by document
         self.db_field = db_field
         self.required = required or primary_key
         self.default = default
         self.unique = bool(unique or unique_with)
         self.unique_with = unique_with
         self.primary_key = primary_key
+        if self.primary_key and not db_field:
+            self.db_field = '_id'
         self.validation = validation
         self.choices = choices
         self.verbose_name = verbose_name
@@ -57,6 +60,14 @@ class BaseField(object):
     def to_mongo(self, value):
         """Convert a Python type to a MongoDB-compatible type.
         """
+        return value
+
+    def from_python(self, value):
+        """Convert a raw Python value (in an assignment) to the internal
+        Python representation.
+        """
+        if value == None:
+            return self.default() if callable(self.default) else self.default
         return value
 
 

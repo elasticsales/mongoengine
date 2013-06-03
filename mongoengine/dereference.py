@@ -7,6 +7,77 @@ from queryset import QuerySet
 from document import Document
 
 
+def fetch_related(objs, field_dict, cache_map=None):
+    """
+    Recursively fetches related objects for the given document instances.
+    All objects must be of the same type. See QuerySet.fetch_related().
+
+    Currently supports ReferenceField only.
+    """
+
+    if not objs:
+        return
+
+    if not cache_map:
+        # list of objects that we fetched, over all iterations / from previous calls, by document class
+        cache_map = {}
+
+    # ids of objects that will be fetched in this iteration, by document class
+    id_set_map = {}
+
+    all_field = field_dict.pop('__all__', False)
+
+    if all_field:
+        document_class = objs[0].__class__
+        for field_name, field in document_class._fields.iteritems():
+            if isinstance(field, ReferenceField):
+                field_dict[field_name] = all_field
+
+    # Determine what IDs we want to fetch
+    for field_name, sub_field_dict in field_dict.iteritems():
+        refs = [getattr(obj, field_name) for obj in objs if getattr(getattr(obj, field_name), '_lazy', False)]
+        if refs:
+            document_class = objs[0].__class__._fields[field_name].document_type
+
+            if not document_class in cache_map:
+                rel_obj_map = cache_map[document_class] = {}
+            else:
+                rel_obj_map = cache_map[document_class]
+
+            if not document_class in id_set_map:
+                id_set = id_set_map[document_class] = set()
+
+            # Never fetch already fetched objects
+            id_set.update(set(ref.id for ref in refs) - set(rel_obj_map.keys()))
+
+    # Fetch objects
+    for document_class, id_set in id_set_map.iteritems():
+        rel_obj_map = cache_map[document_class]
+
+        if id_set:
+            rel_obj_map.update(
+                document_class.objects.in_bulk(list(id_set))
+            )
+
+    # Assign objects
+    for field_name, sub_field_dict in field_dict.iteritems():
+        if objs:
+            document_class = objs[0].__class__._fields[field_name].document_type
+
+            rel_obj_map = cache_map.get(document_class)
+            if rel_obj_map:
+                # Go recursive
+                if isinstance(sub_field_dict, dict):
+                    fetch_related(rel_obj_map.values(), sub_field_dict)
+
+                for obj in objs:
+                    val = getattr(obj, field_name)
+                    if val and val._lazy:
+                        rel_obj = rel_obj_map.get(val.id)
+                        if rel_obj:
+                            setattr(obj, field_name, rel_obj)
+
+
 class DeReference(object):
 
     def __call__(self, items, max_depth=1, instance=None, name=None):

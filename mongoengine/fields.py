@@ -15,7 +15,7 @@ from bson import Binary, DBRef, SON, ObjectId
 from mongoengine.errors import ValidationError
 from mongoengine.python_support import (PY3, bin_type, txt_type,
                                         str_types, StringIO)
-from base import (BaseField, ComplexBaseField, ObjectIdField, GeoJsonBaseField,
+from mongoengine.base import (BaseField, ComplexBaseField, ObjectIdField, GeoJsonBaseField,
                   get_document, BaseDocument)
 from queryset import DO_NOTHING, QuerySet
 from document import Document, EmbeddedDocument
@@ -363,7 +363,7 @@ class EmbeddedDocumentField(BaseField):
         return self.document_type._from_son(val)
 
     def to_mongo(self, val):
-        return val._to_son()
+        return val and val._to_son()
 
     def validate(self, value, clean=True):
         """Make sure that the document instance is an instance of the
@@ -481,8 +481,6 @@ class ListField(ComplexBaseField):
         Required means it cannot be empty - as the default for ListFields is []
     """
 
-    # TODO
-
     def __init__(self, field=None, **kwargs):
         self.field = field
         kwargs.setdefault('default', lambda: [])
@@ -494,7 +492,7 @@ class ListField(ComplexBaseField):
 
     def to_mongo(self, val):
         to_mongo = getattr(self.field, 'to_mongo', None)
-        return [to_mongo(v) for v in val] if to_mongo and val else val
+        return [to_mongo(v) for v in val] if to_mongo and val else val or None
 
     def validate(self, value):
         """Make sure that a list of valid fields is being used.
@@ -558,8 +556,6 @@ class DictField(ComplexBaseField):
     .. versionchanged:: 0.5 - Can now handle complex / varying types of data
     """
 
-    # TODO
-
     def __init__(self, basecls=None, field=None, *args, **kwargs):
         self.field = field
         self.basecls = basecls or BaseField
@@ -567,6 +563,14 @@ class DictField(ComplexBaseField):
             self.error('DictField only accepts dict values')
         kwargs.setdefault('default', lambda: {})
         super(DictField, self).__init__(*args, **kwargs)
+
+    def to_python(self, val):
+        to_python = getattr(self.field, 'to_python', None)
+        return {k: to_python(v) for k, v in val.iteritems()} if to_python else val
+
+    def to_mongo(self, val):
+        to_mongo = getattr(self.field, 'to_mongo', None)
+        return {k: to_mongo(v) for k, v in val.iteritems()} if to_mongo and val else val or None
 
     def validate(self, value):
         """Make sure that a list of valid fields is being used.
