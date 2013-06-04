@@ -13,6 +13,33 @@ NON_FIELD_ERRORS = '__all__'
 _set = object.__setattr__
 #_get = object.__getattr__
 
+class fieldprop(object):
+    def __init__(self, name, field):
+        self.name = name
+        self.field = field
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self.field
+        else:
+            name = self.name
+            data = instance._internal_data
+            if not name in data:
+                if instance._lazy and name != instance._meta['id_field']:
+                    # We need to fetch the doc from the database.
+                    instance.reload()
+                db_field = instance._rename_to_db.get(name, name)
+                field = self.field
+                try:
+                    data[name] = field.to_python(instance._db_data[db_field])
+                except KeyError:
+                    data[name] = field.default() if callable(field.default) else field.default
+
+            return data[name]
+
+    def __set__(self, instance, value):
+        instance._internal_data[self.name] = self.field.from_python(value)
+
 class BaseDocument(object):
     @classmethod
     def register(cls):
@@ -43,26 +70,6 @@ class BaseDocument(object):
 
         bases = cls.__bases__
 
-        def populate_fields(cls, fields):
-            for field_name in dir(cls):
-                # hasattr() will return False if it's a property since we don't want to evaluate them.
-                if hasattr(cls, field_name) and field_name[0] != '_' and isinstance(getattr(cls, field_name), BaseField):
-                    field = getattr(cls, field_name)
-                    fields[field_name] = field
-                    delattr(cls, field_name)
-
-        def register_mixin(cls):
-            bases = cls.__bases__
-            cls._fields = fields = {}
-            for base in bases:
-                if base == object:
-                    continue
-                if not base in _registered_documents:
-                    register_mixin(base)
-                fields.update(base._fields)
-            populate_fields(cls, fields)
-            _registered_documents.add(cls)
-
         collection = None
 
         for base in bases:
@@ -82,16 +89,7 @@ class BaseDocument(object):
                 if not base_meta.get('abstract', True):
                     class_name.append(base.__name__)
 
-            elif base != object:
-                # Quick registration of mixins
-                # TODO: don't register if they have no fields
-                if not base in _registered_documents:
-                    register_mixin(base)
-            else:
-                continue
-
-            fields.update(base._fields)
-                    
+                fields.update(base._fields)
 
         if not is_base_class:
             cls._meta.update({
@@ -103,7 +101,12 @@ class BaseDocument(object):
             cls._meta.update(getattr(cls, 'meta'))
         cls._class_name = '.'.join(reversed(class_name))
 
-        populate_fields(cls, fields)
+        for field_name in dir(cls):
+            # hasattr() will return False if it's a property since we don't want to evaluate them.
+            if hasattr(cls, field_name) and field_name[0] != '_':
+                field = getattr(cls, field_name)
+                if isinstance(field, BaseField):
+                    fields[field_name] = field
 
         for field_name, field in fields.iteritems():
             if field.primary_key:
@@ -113,6 +116,7 @@ class BaseDocument(object):
         cls._register_default_fields()
 
         for field_name, field in fields.iteritems():
+            setattr(cls, field_name, fieldprop(field_name, field))
             db_field = field.db_field
             field.name = field_name
             if db_field:
@@ -193,14 +197,14 @@ class BaseDocument(object):
         return not self.__eq__(other)
 
     def to_dict(self):
-        return dict((field, self._get(field)) for field in self._fields)
+        return dict((field, getattr(self, field)) for field in self._fields)
 
     def _delta(self, full=False):
         sets = {}
         unsets = {}
 
         if full:
-            data = ((field, self._get(field)) for field in self._fields)
+            data = ((field, getattr(self, field)) for field in self._fields)
         else:
             # TODO: Be smarter about this and figure out which fields have
             # actually changed.
@@ -226,32 +230,3 @@ class BaseDocument(object):
 
     def __dir__(self):
         return dir(object) + ['_internal_data', '_db_data'] + self._fields.keys()
-
-    def _get(self, attr):
-        data = self._internal_data
-        if not attr in data:
-            if self._lazy and attr != self._meta['id_field']:
-                # We need to fetch the doc from the database.
-                self.reload()
-            db_field = self._rename_to_db.get(attr, attr)
-            field = self._fields[attr]
-            try:
-                data[attr] = field.to_python(self._db_data[db_field])
-            except KeyError:
-                data[attr] = field.default() if callable(field.default) else field.default
-
-        return data[attr]
-
-    def __getattr__(self, attr):
-        if attr in object.__getattribute__(self, '_fields'):
-            return self._get(attr)
-        else:
-            raise AttributeError(attr)
-        return self._internal_data[attr]
-
-    def __setattr__(self, attr, val):
-        field = self._fields.get(attr, None)
-        if field:
-            self._internal_data[attr] = field.from_python(val)
-        else:
-            super(BaseDocument, self).__setattr__(attr, val)
