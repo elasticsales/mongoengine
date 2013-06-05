@@ -263,7 +263,9 @@ class QuerySet(object):
 
         .. versionadded:: 0.4
         """
-        return self._document(**kwargs).save()
+        document = self._document(**kwargs)
+        document.save()
+        return document
 
     def get_or_create(self, write_concern=None, auto_save=True,
                       *q_objs, **query):

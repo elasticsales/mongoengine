@@ -70,6 +70,40 @@ class BaseField(object):
             return self.default() if callable(self.default) else self.default
         return value
 
+    def validate(self, value, clean=True):
+        """Perform validation on a value.
+        """
+        pass
+
+    def _validate(self, value, **kwargs):
+        from mongoengine.document import Document, EmbeddedDocument
+
+        # check choices
+        if self.choices:
+            is_cls = isinstance(value, (Document, EmbeddedDocument))
+            value_to_check = value.__class__ if is_cls else value
+            err_msg = 'an instance' if is_cls else 'one'
+            if isinstance(self.choices[0], (list, tuple)):
+                option_keys = [k for k, v in self.choices]
+                if value_to_check not in option_keys:
+                    msg = ('Value must be %s of %s' %
+                           (err_msg, unicode(option_keys)))
+                    self.error(msg)
+            elif value_to_check not in self.choices:
+                msg = ('Value must be %s of %s' %
+                       (err_msg, unicode(self.choices)))
+                self.error(msg)
+
+        # check validation argument
+        if self.validation is not None:
+            if callable(self.validation):
+                if not self.validation(value):
+                    self.error('Value does not match custom validation method')
+            else:
+                raise ValueError('validation argument for "%s" must be a '
+                                 'callable.' % self.name)
+
+        self.validate(value, **kwargs)
 
 class ComplexBaseField(BaseField):
     """Handles complex fields, such as lists / dictionaries.
@@ -81,7 +115,30 @@ class ComplexBaseField(BaseField):
     .. versionadded:: 0.5
     """
 
-    # TODO
+    def validate(self, value):
+        """If field is provided ensure the value is valid.
+        """
+        errors = {}
+        if self.field:
+            if hasattr(value, 'iteritems') or hasattr(value, 'items'):
+                sequence = value.iteritems()
+            else:
+                sequence = enumerate(value)
+            for k, v in sequence:
+                try:
+                    self.field._validate(v)
+                except ValidationError, error:
+                    errors[k] = error.errors or error
+                except (ValueError, AssertionError), error:
+                    errors[k] = error
+
+            if errors:
+                field_class = self.field.__class__.__name__
+                self.error('Invalid %s item (%s)' % (field_class, value),
+                           errors=errors)
+        # Don't allow empty values if required
+        if self.required and not value:
+            self.error('Field is required and cannot be empty')
 
     def lookup_member(self, member_name):
         if self.field:

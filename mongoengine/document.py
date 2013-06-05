@@ -1,10 +1,11 @@
 import pymongo
 from bson import SON, DBRef
 
+from mongoengine import signals
 from mongoengine.base import BaseDocument
 from mongoengine.base.fields import ObjectIdField
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
-from mongoengine.queryset import OperationError, NotUniqueError, QuerySet
+from mongoengine.queryset import OperationError, NotUniqueError, QuerySet, DoesNotExist
 from mongoengine.queryset.manager import QuerySetManager
 
 __all__ = ('Document', 'EmbeddedDocument', 'DynamicDocument',
@@ -100,7 +101,9 @@ class Document(BaseDocument):
         meta = cls._meta
         id_field = meta['id_field']
         if id_field == 'id' and 'id' not in cls._fields and not meta['abstract']:
-            cls._fields['id'] = ObjectIdField(primary_key=True, db_field='_id')
+            field = ObjectIdField(primary_key=True, db_field='_id')
+            field._auto_gen = True
+            cls._fields['id'] = field
 
     def pk():
         """Primary key alias
@@ -139,7 +142,8 @@ class Document(BaseDocument):
 
     @property
     def _db_object_key(self):
-        return {self._fields[self._meta['id_field']].db_field: self.pk}
+        field = self._fields[self._meta['id_field']]
+        return {field.db_field: field.to_mongo(self.pk)}
 
     @classmethod
     def _get_collection(cls):
@@ -149,11 +153,51 @@ class Document(BaseDocument):
             cls._collection = db[collection_name]
         return cls._collection
 
-    def save(self, write_concern=None, **kwargs):
-        collection = self._get_collection()
+    def save(self, validate=True, clean=True, write_concern=None, **kwargs):
+        """Save the :class:`~mongoengine.Document` to the database. If the
+        document already exists, it will be updated, otherwise it will be
+        created.
+
+        :param force_insert: only try to create a new document, don't allow
+            updates of existing documents
+        :param validate: validates the document; set to ``False`` to skip.
+        :param clean: call the document clean method, requires `validate` to be
+            True.
+        :param write_concern: Extra keyword arguments are passed down to
+            :meth:`~pymongo.collection.Collection.save` OR
+            :meth:`~pymongo.collection.Collection.insert`
+            which will be used as options for the resultant
+            ``getLastError`` command.  For example,
+            ``save(..., write_concern={w: 2, fsync: True}, ...)`` will
+            wait until at least two servers have recorded the write and
+            will force an fsync on the primary server.
+        :param cascade: Sets the flag for cascading saves.  You can set a
+            default by setting "cascade" in the document __meta__
+        :param cascade_kwargs: optional kwargs dictionary to be passed throw
+            to cascading saves
+        :param _refs: A list of processed references used in cascading saves
+
+        .. versionchanged:: 0.5
+            In existing documents it only saves changed fields using
+            set / unset.  Saves are cascaded and any
+            :class:`~bson.dbref.DBRef` objects that have changes are
+            saved as well.
+        .. versionchanged:: 0.6
+            Cascade saves are optional = defaults to True, if you want
+            fine grain control then you can turn off using document
+            meta['cascade'] = False  Also you can pass different kwargs to
+            the cascade save using cascade_kwargs which overwrites the
+            existing kwargs with custom values
+        """
+        signals.pre_save.send(self.__class__, document=self)
+
+        if validate:
+            self.validate(clean=clean)
 
         if not write_concern:
             write_concern = {'w': 1}
+
+        collection = self._get_collection()
 
         if self._created:
             # Update: Get delta.
@@ -171,6 +215,8 @@ class Document(BaseDocument):
             if update_query:
                 last_error = collection.update(self._db_object_key, update_query, **write_concern)
                 # TODO: evaluate last_error
+
+            created = False
         else:
             # Insert: Get full SON.
             doc = self._to_son()
@@ -181,16 +227,22 @@ class Document(BaseDocument):
             del self._internal_data[id_field]
             self._db_data[self._db_id_field] = object_id
 
+            created = True
+
+        signals.post_save.send(self.__class__, document=self, created=created)
+        return self
+
     def reload(self):
         id_field = self._meta['id_field']
         collection = self._get_collection()
         son = collection.find_one(self._db_object_key)
         if son == None:
-            raise OperationError('Document has been deleted.')
+            raise DoesNotExist('Document has been deleted.')
         _set(self, '_db_data', son)
         _set(self, '_internal_data', {})
         _set(self, '_created', True)
         _set(self, '_lazy', False)
+        return self
 
     def update(self, **kwargs):
         # TODO: invalidate local fields?
@@ -201,6 +253,18 @@ class Document(BaseDocument):
         return self._qs.filter(**self._object_key).update_one(**kwargs)
 
     def delete(self, write_concern=None):
+        """Delete the :class:`~mongoengine.Document` from the database. This
+        will only take effect if the document has been previously saved.
+
+        :param write_concern: Extra keyword arguments are passed down which
+            will be used as options for the resultant
+            ``getLastError`` command.  For example,
+            ``save(..., write_concern={w: 2, fsync: True}, ...)`` will
+            wait until at least two servers have recorded the write and
+            will force an fsync on the primary server.
+        """
+        signals.pre_delete.send(self.__class__, document=self)
+
         if not write_concern:
             write_concern = {'w': 1}
 
@@ -209,6 +273,8 @@ class Document(BaseDocument):
         except pymongo.errors.OperationFailure, err:
             message = u'Could not delete document (%s)' % err.message
             raise OperationError(message)
+
+        signals.post_delete.send(self.__class__, document=self)
 
     def to_dbref(self):
         """Returns an instance of :class:`~bson.dbref.DBRef` useful in

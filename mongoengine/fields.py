@@ -17,6 +17,7 @@ from mongoengine.python_support import (PY3, bin_type, txt_type,
                                         str_types, StringIO)
 from mongoengine.base import (BaseField, ComplexBaseField, ObjectIdField, GeoJsonBaseField,
                   get_document, BaseDocument)
+from mongoengine.queryset import DoesNotExist
 from queryset import DO_NOTHING, QuerySet
 from document import Document, EmbeddedDocument
 from connection import get_db, DEFAULT_CONNECTION_NAME
@@ -32,6 +33,7 @@ __all__ = ['StringField',  'URLField',  'EmailField',  'IntField',
            'ComplexDateTimeField',  'EmbeddedDocumentField', 'ObjectIdField',
            'GenericEmbeddedDocumentField',  'DynamicField',  'ListField',
            'SortedListField',  'DictField',  'MapField',  'ReferenceField',
+           'SafeReferenceField',
            'GenericReferenceField',  'BinaryField',  'GridFSError',
            'GridFSProxy',  'FileField',  'ImageGridFsProxy',
            'ImproperlyConfigured',  'ImageField',  'GeoPointField', 'PointField',
@@ -706,14 +708,35 @@ class ReferenceField(BaseField):
             return DBRef(collection, value)
 
     def to_python(self, value):
-        document_type = self.document_type
-        if self.dbref:
-            obj = document_type(pk=value.id)
+        if value:
+            document_type = self.document_type
+            if self.dbref:
+                obj = document_type(pk=value.id)
+            else:
+                obj = document_type(pk=value)
+            obj._lazy = True
+            obj._created = True
+            return obj
+
+    def from_python(self, value):
+        if isinstance(value, Document):
+            return value
+        elif value == None:
+            return super(ReferenceField, self).from_python(value)
         else:
-            obj = document_type(pk=value)
-        obj._lazy = True
-        obj._created = True
-        return obj
+            # Support for werkzeug.local.LocalProxy
+            if hasattr(value, '_get_current_object'):
+                return value._get_current_object()
+            else:
+                # DBRef or ID
+                document_type = self.document_type
+                if isinstance(value, DBRef):
+                    obj = document_type(pk=value.id)
+                else:
+                    obj = document_type(pk=value)
+                obj._lazy = True
+                obj._created = True
+                return obj
 
     def prepare_query_value(self, op, value):
         return self.to_mongo(value)
@@ -728,6 +751,25 @@ class ReferenceField(BaseField):
 
     def lookup_member(self, member_name):
         return self.document_type._fields.get(member_name)
+
+
+class SafeReferenceField(ReferenceField):
+    """
+    Like a ReferenceField, but doesn't return non-existing references when
+    dereferencing, i.e. no DBRefs are returned. This means that the next time
+    an object is saved, the non-existing references are removed and application
+    code can rely on having only valid dereferenced objects.
+    """
+
+    def to_python(self, value):
+        obj = super(SafeReferenceField, self).to_python(value)
+        if obj:
+            # Must dereference so we don't get an invalid ObjectId back.
+            try:
+                obj.reload()
+            except DoesNotExist:
+                return None
+        return obj
 
 
 class GenericReferenceField(BaseField):
