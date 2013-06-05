@@ -1,8 +1,10 @@
 from mongoengine.queryset import DoesNotExist, MultipleObjectsReturned
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
 from bson import SON
+import pymongo
 
-from mongoengine.base.common import _all_subclasses, get_document
+from mongoengine.base.common import _all_subclasses, get_document, ALLOW_INHERITANCE
+from mongoengine.base.metaclasses import BaseDocumentMetaclass
 from mongoengine.errors import ValidationError, LookUpError
 from mongoengine.base.fields import BaseField
 
@@ -38,9 +40,14 @@ class fieldprop(object):
             return data[name]
 
     def __set__(self, instance, value):
+        if instance._lazy:
+            # Fetch the from the database before we assign to a lazy object.
+            instance.reload()
         instance._internal_data[self.name] = self.field.from_python(value)
 
 class BaseDocument(object):
+    __metaclass__ = BaseDocumentMetaclass
+
     @classmethod
     def register(cls):
         from mongoengine.document import Document, EmbeddedDocument
@@ -59,9 +66,12 @@ class BaseDocument(object):
         cls._fields = fields = {}
         cls._meta = {
             'ordering': 'id',
+            'indexes': [],
             'id_field': 'id',
             'abstract': True,
-            'allow_inheritance': True,
+            'allow_inheritance': False,
+            'max_size': None,
+            'max_documents': None,
         }
 
         is_base_class = cls in (BaseDocument, Document, EmbeddedDocument)
@@ -79,11 +89,11 @@ class BaseDocument(object):
 
                 base_meta = base._meta
 
-                if not base_meta['allow_inheritance'] and not base_meta['abstract']:
-                    raise ValueError('Error registering %s: Document %s may not be subclassed' % (cls.__name__, base.__name__))
-
-                if not is_base_class and base_meta['allow_inheritance'] and not base_meta['abstract']:
-                    collection = base_meta['collection']
+                if not is_base_class and not base_meta['abstract']:
+                    if base_meta['allow_inheritance']:
+                        collection = base_meta['collection']
+                    else:
+                        raise ValueError('Error registering %s: Document %s may not be subclassed' % (cls.__name__, base.__name__))
 
                 cls._meta.update(base_meta)
                 if not base_meta.get('abstract', True):
@@ -142,6 +152,142 @@ class BaseDocument(object):
     @classmethod
     def _register_default_fields(cls):
         pass
+
+    @classmethod
+    def _build_index_specs(cls, meta_indexes):
+        """Generate and merge the full index specs
+        """
+
+        #geo_indices = cls._geo_indices()
+        unique_indices = cls._unique_with_indexes()
+        index_specs = [cls._build_index_spec(spec)
+                       for spec in meta_indexes]
+
+        def merge_index_specs(index_specs, indices):
+            if not indices:
+                return index_specs
+
+            spec_fields = [v['fields']
+                           for k, v in enumerate(index_specs)]
+            # Merge unqiue_indexes with existing specs
+            for k, v in enumerate(indices):
+                if v['fields'] in spec_fields:
+                    index_specs[spec_fields.index(v['fields'])].update(v)
+                else:
+                    index_specs.append(v)
+            return index_specs
+
+        #index_specs = merge_index_specs(index_specs, geo_indices)
+        index_specs = merge_index_specs(index_specs, unique_indices)
+        return index_specs
+
+    @classmethod
+    def _build_index_spec(cls, spec):
+        """Build a PyMongo index spec from a MongoEngine index spec.
+        """
+        if isinstance(spec, basestring):
+            spec = {'fields': [spec]}
+        elif isinstance(spec, (list, tuple)):
+            spec = {'fields': list(spec)}
+        elif isinstance(spec, dict):
+            spec = dict(spec)
+
+        index_list = []
+        direction = None
+
+        # Check to see if we need to include _cls
+        allow_inheritance = cls._meta.get('allow_inheritance',
+                                          ALLOW_INHERITANCE)
+        include_cls = allow_inheritance and not spec.get('sparse', False)
+
+        for key in spec['fields']:
+            # If inherited spec continue
+            if isinstance(key, (list, tuple)):
+                continue
+
+            # ASCENDING from +,
+            # DESCENDING from -
+            # GEO2D from *
+            direction = pymongo.ASCENDING
+            if key.startswith("-"):
+                direction = pymongo.DESCENDING
+            elif key.startswith("*"):
+                direction = pymongo.GEO2D
+            if key.startswith(("+", "-", "*")):
+                key = key[1:]
+
+            # Use real field name, do it manually because we need field
+            # objects for the next part (list field checking)
+            parts = key.split('.')
+            if parts in (['pk'], ['id'], ['_id']):
+                key = '_id'
+                fields = []
+            else:
+                fields = cls._lookup_field(parts)
+                parts = [field if field == '_id' else field.db_field
+                         for field in fields]
+                key = '.'.join(parts)
+            index_list.append((key, direction))
+
+        # Don't add cls to a geo index
+        if include_cls and direction is not pymongo.GEO2D:
+            index_list.insert(0, ('_cls', 1))
+
+        if index_list:
+            spec['fields'] = index_list
+        if spec.get('sparse', False) and len(spec['fields']) > 1:
+            raise ValueError(
+                'Sparse indexes can only have one field in them. '
+                'See https://jira.mongodb.org/browse/SERVER-2193')
+
+        return spec
+
+    @classmethod
+    def _unique_with_indexes(cls, namespace=""):
+        """
+        Find and set unique indexes
+        """
+        unique_indexes = []
+        for field_name, field in cls._fields.items():
+            sparse = False
+            # Generate a list of indexes needed by uniqueness constraints
+            if field.unique:
+                field.required = True
+                unique_fields = [field.db_field]
+
+                # Add any unique_with fields to the back of the index spec
+                if field.unique_with:
+                    if isinstance(field.unique_with, basestring):
+                        field.unique_with = [field.unique_with]
+
+                    # Convert unique_with field names to real field names
+                    unique_with = []
+                    for other_name in field.unique_with:
+                        parts = other_name.split('.')
+                        # Lookup real name
+                        parts = cls._lookup_field(parts)
+                        name_parts = [part.db_field for part in parts]
+                        unique_with.append('.'.join(name_parts))
+                        # Unique field should be required
+                        parts[-1].required = True
+                        sparse = (not sparse and
+                                  parts[-1].name not in cls.__dict__)
+                    unique_fields += unique_with
+
+                # Add the new index to the list
+                fields = [("%s%s" % (namespace, f), pymongo.ASCENDING)
+                          for f in unique_fields]
+                index = {'fields': fields, 'unique': True, 'sparse': sparse}
+                unique_indexes.append(index)
+
+            # Grab any embedded document field unique indexes
+            if (field.__class__.__name__ == "EmbeddedDocumentField" and
+               field.document_type != cls):
+                field_namespace = "%s." % field_name
+                doc_cls = field.document_type
+                unique_indexes += doc_cls._unique_with_indexes(field_namespace)
+
+        return unique_indexes
 
     @classmethod
     def _lookup_field(cls, parts):

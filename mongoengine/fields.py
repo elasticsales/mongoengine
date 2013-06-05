@@ -197,8 +197,8 @@ class DateTimeField(BaseField):
         if not isinstance(value, (datetime.datetime, datetime.date)):
             self.error(u'cannot parse date "%s"' % value)
 
-    #def to_mongo(self, value):
-    #    return self.prepare_query_value(None, value)
+    def from_python(self, value):
+        return self.prepare_query_value(None, value)
 
     def prepare_query_value(self, op, value):
         if value is None:
@@ -255,6 +255,8 @@ class ComplexDateTimeField(StringField):
 
     .. versionadded:: 0.5
     """
+
+    # TODO
 
     def __init__(self, separator=',', **kwargs):
         self.names = ['year', 'month', 'day', 'hour', 'minute', 'second',

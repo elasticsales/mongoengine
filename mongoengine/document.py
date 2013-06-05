@@ -1,8 +1,10 @@
-import pymongo
 from bson import SON, DBRef
+import pymongo
+import re
 
 from mongoengine import signals
 from mongoengine.base import BaseDocument
+from mongoengine.base.common import ALLOW_INHERITANCE
 from mongoengine.base.fields import ObjectIdField
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
 from mongoengine.queryset import OperationError, NotUniqueError, QuerySet, DoesNotExist
@@ -88,12 +90,14 @@ class Document(BaseDocument):
     @classmethod
     def register(cls):
         super(Document, cls).register()
+        meta = cls._meta
+        meta['index_specs'] = cls._build_index_specs(meta['indexes'])
         cls._collection = None
         cls.objects = QuerySetManager()
-        id_field = cls._meta['id_field']
+        id_field = meta['id_field']
         cls._db_id_field = cls._rename_to_db.get(id_field, id_field)
-        if not cls._meta.get('collection'):
-            cls._meta['collection'] = ''.join('_%s' % c if c.isupper() else c
+        if not meta.get('collection'):
+            meta['collection'] = ''.join('_%s' % c if c.isupper() else c
                                          for c in cls.__name__).strip('_').lower()
 
     @classmethod
@@ -147,11 +151,106 @@ class Document(BaseDocument):
 
     @classmethod
     def _get_collection(cls):
+        """Returns the collection for the document.
+        Ensures indexes are created. """
         if not cls._collection:
             db = cls._get_db()
             collection_name = cls._get_collection_name()
-            cls._collection = db[collection_name]
+            # Create collection as a capped collection if specified
+            if cls._meta['max_size'] or cls._meta['max_documents']:
+                # Get max document limit and max byte size from meta
+                max_size = cls._meta['max_size'] or 10000000  # 10MB default
+                max_documents = cls._meta['max_documents']
+
+                if collection_name in db.collection_names():
+                    cls._collection = db[collection_name]
+                    # The collection already exists, check if its capped
+                    # options match the specified capped options
+                    options = cls._collection.options()
+                    if options.get('max') != max_documents or \
+                       options.get('size') != max_size:
+                        msg = (('Cannot create collection "%s" as a capped '
+                               'collection as it already exists')
+                               % cls._collection)
+                        raise InvalidCollectionError(msg)
+                else:
+                    # Create the collection as a capped collection
+                    opts = {'capped': True, 'size': max_size}
+                    if max_documents:
+                        opts['max'] = max_documents
+                    cls._collection = db.create_collection(
+                        collection_name, **opts
+                    )
+            else:
+                cls._collection = db[collection_name]
+            if cls._meta.get('auto_create_index', True):
+                cls.ensure_indexes()
         return cls._collection
+
+    @classmethod
+    def ensure_index(cls, key_or_list, drop_dups=False, background=False,
+        **kwargs):
+        """Ensure that the given indexes are in place.
+
+        :param key_or_list: a single index key or a list of index keys (to
+            construct a multi-field index); keys may be prefixed with a **+**
+            or a **-** to determine the index ordering
+        """
+        index_spec = cls._build_index_spec(key_or_list)
+        index_spec = index_spec.copy()
+        fields = index_spec.pop('fields')
+        index_spec['drop_dups'] = drop_dups
+        index_spec['background'] = background
+        index_spec.update(kwargs)
+
+        return cls._get_collection().ensure_index(fields, **index_spec)
+
+    @classmethod
+    def ensure_indexes(cls):
+        """Checks the document meta data and ensures all the indexes exist.
+
+        .. note:: You can disable automatic index creation by setting
+                  `auto_create_index` to False in the documents meta data
+        """
+        background = cls._meta.get('index_background', False)
+        drop_dups = cls._meta.get('index_drop_dups', False)
+        index_opts = cls._meta.get('index_opts') or {}
+        index_cls = cls._meta.get('index_cls', True)
+
+        collection = cls._get_collection()
+
+        # determine if an index which we are creating includes
+        # _cls as its first field; if so, we can avoid creating
+        # an extra index on _cls, as mongodb will use the existing
+        # index to service queries against _cls
+        cls_indexed = False
+        def includes_cls(fields):
+            first_field = None
+            if len(fields):
+                if isinstance(fields[0], basestring):
+                    first_field = fields[0]
+                elif isinstance(fields[0], (list, tuple)) and len(fields[0]):
+                    first_field = fields[0][0]
+            return first_field == '_cls'
+
+        # Ensure document-defined indexes are created
+        if cls._meta['index_specs']:
+            index_spec = cls._meta['index_specs']
+            for spec in index_spec:
+                spec = spec.copy()
+                fields = spec.pop('fields')
+                cls_indexed = cls_indexed or includes_cls(fields)
+                opts = index_opts.copy()
+                opts.update(spec)
+                collection.ensure_index(fields, background=background,
+                                        drop_dups=drop_dups, **opts)
+
+        # If _cls is being used (for polymorphism), it needs an index,
+        # only if another index doesn't begin with _cls
+        if (index_cls and not cls_indexed and
+           cls._meta.get('allow_inheritance', ALLOW_INHERITANCE) is True):
+            collection.ensure_index('_cls', background=background,
+                                    **index_opts)
 
     def save(self, validate=True, clean=True, write_concern=None, **kwargs):
         """Save the :class:`~mongoengine.Document` to the database. If the
@@ -199,35 +298,45 @@ class Document(BaseDocument):
 
         collection = self._get_collection()
 
-        if self._created:
-            # Update: Get delta.
-            sets, unsets = self._delta()
+        try:
+            if self._created:
+                # Update: Get delta.
+                sets, unsets = self._delta()
 
-            db_id_field = self._fields[self._meta['id_field']].db_field
-            sets.pop(db_id_field, None)
+                db_id_field = self._fields[self._meta['id_field']].db_field
+                sets.pop(db_id_field, None)
 
-            update_query = {}
-            if sets:
-                update_query['$set'] = sets
-            if unsets:
-                update_query['$unset'] = unsets
+                update_query = {}
+                if sets:
+                    update_query['$set'] = sets
+                if unsets:
+                    update_query['$unset'] = unsets
 
-            if update_query:
-                last_error = collection.update(self._db_object_key, update_query, **write_concern)
-                # TODO: evaluate last_error
+                if update_query:
+                    last_error = collection.update(self._db_object_key, update_query, **write_concern)
+                    # TODO: evaluate last_error
 
-            created = False
-        else:
-            # Insert: Get full SON.
-            doc = self._to_son()
-            object_id = collection.insert(doc, **write_concern)
-            self._created = True
+                created = False
+            else:
+                # Insert: Get full SON.
+                doc = self._to_son()
+                object_id = collection.insert(doc, **write_concern)
+                self._created = True
 
-            id_field = self._meta['id_field']
-            del self._internal_data[id_field]
-            self._db_data[self._db_id_field] = object_id
+                id_field = self._meta['id_field']
+                del self._internal_data[id_field]
+                self._db_data[self._db_id_field] = object_id
 
-            created = True
+                created = True
+
+        except pymongo.errors.OperationFailure, err:
+            message = 'Could not save document (%s)'
+            if re.match('^E1100[01] duplicate key', unicode(err)):
+                # E11000 - duplicate key error index
+                # E11001 - duplicate key on update
+                message = u'Tried to save duplicate unique keys (%s)'
+                raise NotUniqueError(message % unicode(err))
+            raise OperationError(message % unicode(err))
 
         signals.post_save.send(self.__class__, document=self, created=created)
         return self
@@ -296,4 +405,40 @@ class DynamicEmbeddedDocument(EmbeddedDocument):
 
 
 class MapReduceDocument(object):
-    pass # TODO
+    """A document returned from a map/reduce query.
+
+    :param collection: An instance of :class:`~pymongo.Collection`
+    :param key: Document/result key, often an instance of
+                :class:`~bson.objectid.ObjectId`. If supplied as
+                an ``ObjectId`` found in the given ``collection``,
+                the object can be accessed via the ``object`` property.
+    :param value: The result(s) for this key.
+
+    .. versionadded:: 0.3
+    """
+
+    def __init__(self, document, collection, key, value):
+        self._document = document
+        self._collection = collection
+        self.key = key
+        self.value = value
+
+    @property
+    def object(self):
+        """Lazy-load the object referenced by ``self.key``. ``self.key``
+        should be the ``primary_key``.
+        """
+        id_field = self._document()._meta['id_field']
+        id_field_type = type(id_field)
+
+        if not isinstance(self.key, id_field_type):
+            try:
+                self.key = id_field_type(self.key)
+            except:
+                raise Exception("Could not cast key as %s" % \
+                                id_field_type.__name__)
+
+        if not hasattr(self, "_key_object"):
+            self._key_object = self._document.objects.with_id(self.key)
+            return self._key_object
+        return self._key_object

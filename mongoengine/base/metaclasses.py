@@ -12,8 +12,16 @@ from mongoengine.queryset import (DO_NOTHING, DoesNotExist,
 from mongoengine.base.common import _document_registry, ALLOW_INHERITANCE
 from mongoengine.base.fields import BaseField, ComplexBaseField, ObjectIdField
 
-__all__ = ('DocumentMetaclass', 'TopLevelDocumentMetaclass')
+__all__ = ('BaseDocumentMetaclass', 'DocumentMetaclass', 'TopLevelDocumentMetaclass')
 
+class BaseDocumentMetaclass(type):
+    def __init__(cls, name, bases, attrs):
+        super(BaseDocumentMetaclass, cls).__init__(name, bases, attrs)
+        if name not in ('BaseDocument', 'EmbeddedDocument', 'Document'):
+            cls.register()
+
+
+# TODO: integrate these fully into register
 
 class DocumentMetaclass(type):
     """Metaclass for all documents.
