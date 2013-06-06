@@ -196,9 +196,6 @@ class SignalTests(unittest.TestCase):
     def test_model_signals(self):
         """ Model saves should throw some signals. """
 
-        def create_author():
-            self.Author(name='Bill Shakespeare')
-
         def bulk_create_author_with_load():
             a1 = self.Author(name='Bill Shakespeare')
             self.Author.objects.insert([a1], load_bulk=True)
@@ -206,12 +203,6 @@ class SignalTests(unittest.TestCase):
         def bulk_create_author_without_load():
             a1 = self.Author(name='Bill Shakespeare')
             self.Author.objects.insert([a1], load_bulk=False)
-
-        self.assertEqual(self.get_signal_output(create_author), [
-            "pre_init signal, Author",
-            "{'name': 'Bill Shakespeare'}",
-            "post_init signal, Bill Shakespeare",
-        ])
 
         a1 = self.Author(name='Bill Shakespeare')
         self.assertEqual(self.get_signal_output(a1.save), [
@@ -233,20 +224,13 @@ class SignalTests(unittest.TestCase):
             'post_delete signal, William Shakespeare',
         ])
 
-        signal_output = self.get_signal_output(bulk_create_author_with_load)
-
-        # The output of this signal is not entirely deterministic. The reloaded
-        # object will have an object ID. Hence, we only check part of the output
-        self.assertEqual(signal_output[3],
-            "pre_bulk_insert signal, [<Author: Bill Shakespeare>]")
-        self.assertEqual(signal_output[-2:],
-            ["post_bulk_insert signal, [<Author: Bill Shakespeare>]",
-             "Is loaded",])
+        self.assertEqual(self.get_signal_output(bulk_create_author_with_load), [
+            "pre_bulk_insert signal, [<Author: Bill Shakespeare>]",
+            "post_bulk_insert signal, [<Author: Bill Shakespeare>]",
+            "Is loaded",
+        ])
 
         self.assertEqual(self.get_signal_output(bulk_create_author_without_load), [
-            "pre_init signal, Author",
-            "{'name': 'Bill Shakespeare'}",
-            "post_init signal, Bill Shakespeare",
             "pre_bulk_insert signal, [<Author: Bill Shakespeare>]",
             "post_bulk_insert signal, [<Author: Bill Shakespeare>]",
             "Not loaded",

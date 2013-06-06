@@ -3,6 +3,7 @@ from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
 from bson import SON
 import pymongo
 
+from mongoengine.base.fields import ComplexBaseField
 from mongoengine.base.common import _all_subclasses, get_document, ALLOW_INHERITANCE
 from mongoengine.base.metaclasses import BaseDocumentMetaclass
 from mongoengine.errors import ValidationError, LookUpError
@@ -83,7 +84,7 @@ class BaseDocument(object):
         collection = None
 
         for base in bases:
-            if issubclass(base, Document):
+            if issubclass(base, BaseDocument):
                 if not base in _registered_documents:
                     base.register()
 
@@ -128,6 +129,7 @@ class BaseDocument(object):
             setattr(cls, field_name, fieldprop(field_name, field))
             db_field = field.db_field
             field.name = field_name
+            field.owner_document = cls
             if db_field:
                 cls._rename_to_python[db_field] = field_name
                 cls._rename_to_db[field_name] = db_field
@@ -406,7 +408,6 @@ class BaseDocument(object):
     def _to_son(self):
         sets, unsets = self._delta(full=True)
         son = SON(**sets)
-        #son['_id'] = None
         if self._meta['allow_inheritance']:
             son['_cls'] = self._class_name
         return son
