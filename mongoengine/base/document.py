@@ -350,23 +350,19 @@ class BaseDocument(object):
         if class_name != cls._class_name:
             cls = get_document(class_name)
 
-        self = cls()
-        _set(self, '_db_data', son)
-        _set(self, '_created', True)
-        return self
+        return cls(_son=son)
 
-    def __init__(self, **kwargs):
-        # TODO: filter by keys
-        pk = kwargs.pop('pk', None)
-        _set(self, '_created', False)
+    def __init__(self, _son=None, **kwargs):
+        _set(self, '_db_data', _son or {})
+        _set(self, '_created', _son is not None)
         _set(self, '_lazy', False)
         _set(self, '_internal_data', {})
         if kwargs:
+            pk = kwargs.pop('pk', None)
             for field in set(self._fields.keys()).intersection(kwargs.keys()):
                 setattr(self, field, kwargs[field])
-        _set(self, '_db_data', {})
-        if pk != None: # TODO: slow
-            self.pk = pk
+            if pk != None:
+                self.pk = pk
 
     def __unicode__(self):
         return u'%s object' % self.__class__.__name__
