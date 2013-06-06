@@ -321,6 +321,10 @@ class Document(BaseDocument):
                 # Insert: Get full SON.
                 doc = self._to_son()
                 object_id = collection.insert(doc, **write_concern)
+                # Fix pymongo's "return return_one and ids[0] or ids":
+                # If the ID is 0, pymongo wraps it in a list.
+                if isinstance(object_id, list) and not object_id[0]:
+                    object_id = object_id[0]
                 self._created = True
 
                 id_field = self._meta['id_field']

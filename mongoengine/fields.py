@@ -710,7 +710,7 @@ class ReferenceField(BaseField):
             return DBRef(collection, value)
 
     def to_python(self, value):
-        if value:
+        if value != None:
             document_type = self.document_type
             if self.dbref:
                 obj = document_type(pk=value.id)
