@@ -341,6 +341,12 @@ class Document(BaseDocument):
         signals.post_save.send(self.__class__, document=self, created=created)
         return self
 
+    def select_related(self, max_depth=1):
+        from mongoengine.dereference import fetch_related
+        f = lambda n: {'__all__': f(n-1) if n > 1 else True}
+        fetch_related([self], f(max_depth))
+        return self
+
     def reload(self):
         id_field = self._meta['id_field']
         collection = self._get_collection()
