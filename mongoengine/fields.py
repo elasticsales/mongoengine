@@ -848,6 +848,9 @@ class GenericReferenceField(BaseField):
             doc = doc_cls._from_son(doc)
         return doc
 
+    def to_python(self, value):
+        return self.dereference(value)
+
     def to_mongo(self, document):
         if document is None:
             return None
