@@ -33,7 +33,7 @@ __all__ = ['StringField',  'URLField',  'EmailField',  'IntField',
            'ComplexDateTimeField',  'EmbeddedDocumentField', 'ObjectIdField',
            'GenericEmbeddedDocumentField',  'DynamicField',  'ListField',
            'SortedListField',  'DictField',  'MapField',  'ReferenceField',
-           'SafeReferenceField',
+           'SafeReferenceField', 'SafeReferenceListField',
            'GenericReferenceField',  'BinaryField',  'GridFSError',
            'GridFSProxy',  'FileField',  'ImageGridFsProxy',
            'ImproperlyConfigured',  'ImageField',  'GeoPointField', 'PointField',
@@ -761,6 +761,9 @@ class SafeReferenceField(ReferenceField):
     dereferencing, i.e. no DBRefs are returned. This means that the next time
     an object is saved, the non-existing references are removed and application
     code can rely on having only valid dereferenced objects.
+
+    When the field is referenced, the referenced object is loaded from the
+    database.
     """
 
     def to_python(self, value):
@@ -772,6 +775,31 @@ class SafeReferenceField(ReferenceField):
             except DoesNotExist:
                 return None
         return obj
+
+
+class SafeReferenceListField(ListField):
+    """
+    Like a ListField, but doesn't return non-existing references when
+    dereferencing, i.e. no DBRefs are returned. This means that the next time
+    an object is saved, the non-existing references are removed and application
+    code can rely on having only valid dereferenced objects.
+
+    When the field is referenced, all referenced objects are loaded from the
+    database.
+
+    Must use ReferenceField as its field class.
+    """
+
+    def __init__(self, field, **kwargs):
+        if not isinstance(field, ReferenceField):
+            raise ValueError('Field argument must be a ReferenceField instance.')
+        return super(SafeReferenceListField, self).__init__(field, **kwargs)
+
+    def to_python(self, value):
+        result = super(SafeReferenceListField, self).to_python(value)
+        if result:
+            objs = self.field.document_type.objects.in_bulk([obj.id for obj in result])
+            return filter(None, [objs.get(obj.id) for obj in result])
 
 
 class GenericReferenceField(BaseField):
