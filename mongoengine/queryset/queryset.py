@@ -364,7 +364,7 @@ class QuerySet(object):
             if doc.pk and not doc._created:
                 msg = "Some documents have ObjectIds use doc.update() instead"
                 raise OperationError(msg)
-            raw.append(doc.to_mongo())
+            raw.append(doc._to_son())
 
         signals.pre_bulk_insert.send(self._document, documents=docs)
         try:
