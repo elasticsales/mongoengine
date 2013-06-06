@@ -747,7 +747,7 @@ class ReferenceField(BaseField):
         if not isinstance(value, (self.document_type, DBRef)):
             self.error("A ReferenceField only accepts DBRef or documents")
 
-        if isinstance(value, Document) and value.id is None:
+        if isinstance(value, Document) and value.pk is None:
             self.error('You can only reference documents once they have been '
                        'saved to the database')
 
