@@ -290,7 +290,8 @@ class Document(BaseDocument):
             collection.ensure_index('_cls', background=background,
                                     **index_opts)
 
-    def save(self, validate=True, clean=True, write_concern=None, **kwargs):
+    def save(self, validate=True, clean=True, write_concern=None,
+             cascade=None, cascade_kwargs=None, _refs=None, **kwargs):
         """Save the :class:`~mongoengine.Document` to the database. If the
         document already exists, it will be updated, otherwise it will be
         created.
@@ -320,9 +321,9 @@ class Document(BaseDocument):
             :class:`~bson.dbref.DBRef` objects that have changes are
             saved as well.
         .. versionchanged:: 0.6
-            Cascade saves are optional = defaults to True, if you want
-            fine grain control then you can turn off using document
-            meta['cascade'] = False  Also you can pass different kwargs to
+            Cascade saves are optional = defaults to False, if you want
+            fine grain control then you can turn on using document
+            meta['cascade'] = True  Also you can pass different kwargs to
             the cascade save using cascade_kwargs which overwrites the
             existing kwargs with custom values
         """
@@ -371,6 +372,20 @@ class Document(BaseDocument):
 
                 created = True
 
+            cascade = (self._meta.get('cascade', False)
+                       if cascade is None else cascade)
+            if cascade:
+                kwargs = {
+                    #"force_insert": force_insert,
+                    "validate": validate,
+                    "write_concern": write_concern,
+                    "cascade": cascade
+                }
+                if cascade_kwargs:  # Allow granular control over cascades
+                    kwargs.update(cascade_kwargs)
+                kwargs['_refs'] = _refs
+                self.cascade_save(**kwargs)
+
         except pymongo.errors.OperationFailure, err:
             message = 'Could not save document (%s)'
             if re.match('^E1100[01] duplicate key', unicode(err)):
@@ -382,6 +397,31 @@ class Document(BaseDocument):
 
         signals.post_save.send(self.__class__, document=self, created=created)
         return self
+
+    def cascade_save(self, *args, **kwargs):
+        """Recursively saves any references /
+           generic references on an objects"""
+        import fields
+        _refs = kwargs.get('_refs', []) or []
+
+        for name, cls in self._fields.items():
+            if not isinstance(cls, (fields.ReferenceField,
+                                    fields.GenericReferenceField)):
+                continue
+
+            ref = getattr(self, name)
+            if not ref or isinstance(ref, DBRef):
+                continue
+
+            if not getattr(ref, '_changed_fields', True):
+                continue
+
+            ref_id = "%s,%s" % (ref.__class__.__name__, str(ref.to_dict()))
+            if ref and ref_id not in _refs:
+                _refs.append(ref_id)
+                kwargs["_refs"] = _refs
+                ref.save(**kwargs)
+                ref._changed_fields = []
 
     def select_related(self, max_depth=1):
         from mongoengine.dereference import fetch_related
