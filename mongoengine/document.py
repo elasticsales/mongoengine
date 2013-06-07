@@ -169,12 +169,23 @@ class Document(BaseDocument):
 
     @property
     def _object_key(self):
-        return {'pk': self.pk}
+        """Dict to identify object in collection
+        """
+        select_dict = {'pk': self.pk}
+        shard_key = self.__class__._meta.get('shard_key', tuple())
+        for k in shard_key:
+            select_dict[k] = getattr(self, k)
+        return select_dict
 
     @property
     def _db_object_key(self):
         field = self._fields[self._meta['id_field']]
-        return {field.db_field: field.to_mongo(self.pk)}
+        select_dict = {field.db_field: field.to_mongo(self.pk)}
+        shard_key = self.__class__._meta.get('shard_key', tuple())
+        for k in shard_key:
+            actual_key = self._db_field_map.get(k, k)
+            select_dict[actual_key] = doc[actual_key]
+        return select_dict
 
     @classmethod
     def _get_collection(cls):
