@@ -54,6 +54,31 @@ class BaseField(object):
             self.creation_counter = BaseField.creation_counter
             BaseField.creation_counter += 1
 
+    def __get__(self, instance, owner):
+        if instance is None:
+            # Document class being used rather than a document object
+            return self
+        else:
+            name = self.name
+            data = instance._internal_data
+            if not name in data:
+                if instance._lazy and name != instance._meta['id_field']:
+                    # We need to fetch the doc from the database.
+                    instance.reload()
+                db_field = instance._rename_to_db.get(name, name)
+                try:
+                    data[name] = self.to_python(instance._db_data[db_field])
+                except KeyError:
+                    data[name] = self.default() if callable(self.default) else self.default
+
+            return data[name]
+
+    def __set__(self, instance, value):
+        if instance._lazy:
+            # Fetch the from the database before we assign to a lazy object.
+            instance.reload()
+        instance._internal_data[self.name] = self.from_python(value)
+
     def error(self, message="", errors=None, field_name=None):
         """Raises a ValidationError.
         """
