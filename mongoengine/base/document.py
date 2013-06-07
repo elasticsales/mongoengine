@@ -5,7 +5,6 @@ import pymongo
 
 from mongoengine.base.fields import ComplexBaseField
 from mongoengine.base.common import _all_subclasses, get_document, ALLOW_INHERITANCE
-from mongoengine.base.metaclasses import BaseDocumentMetaclass
 from mongoengine.errors import ValidationError, LookUpError
 from mongoengine.base.fields import BaseField
 
@@ -47,114 +46,6 @@ class fieldprop(object):
         instance._internal_data[self.name] = self.field.from_python(value)
 
 class BaseDocument(object):
-    __metaclass__ = BaseDocumentMetaclass
-
-    @classmethod
-    def register(cls):
-        from mongoengine.document import Document, EmbeddedDocument
-        from mongoengine.base.common import _registered_documents, _document_registry
-
-        if cls in _registered_documents:
-            # TODO: This is untested.
-            raise ValueError('Document is already registered.')
-
-        # Registers the document class and caches fields and and field
-        # functions. When any changes to fields are made the class must be
-        # reregistered (untested).
-
-        cls._rename_to_db = {} # field name -> db field name
-        cls._rename_to_python = {} # db field name -> field name
-        cls._fields = fields = {}
-        cls._meta = {
-            'ordering': 'id',
-            'indexes': [],
-            'id_field': 'id',
-            'abstract': True,
-            'allow_inheritance': False,
-            'max_size': None,
-            'max_documents': None,
-        }
-
-        is_base_class = cls in (BaseDocument, Document, EmbeddedDocument)
-
-        class_name = [cls.__name__]
-
-        bases = cls.__bases__
-
-        collection = None
-
-        for base in bases:
-            if issubclass(base, BaseDocument):
-                if not base in _registered_documents:
-                    base.register()
-
-                base_meta = base._meta
-
-                if not is_base_class and not base_meta['abstract']:
-                    if base_meta['allow_inheritance']:
-                        collection = base_meta['collection']
-                    else:
-                        raise ValueError('Error registering %s: Document %s may not be subclassed' % (cls.__name__, base.__name__))
-
-                cls._meta.update(base_meta)
-                if not base_meta.get('abstract', True):
-                    class_name.append(base.__name__)
-
-                fields.update(base._fields)
-
-        if not is_base_class:
-            cls._meta.update({
-                'abstract': False,
-                'collection': collection,
-            })
-        if 'meta' in cls.__dict__:
-            cls._meta.update(getattr(cls, 'meta'))
-        cls._class_name = '.'.join(reversed(class_name))
-
-        for field_name in dir(cls):
-            # hasattr() will return False if it's a property since we don't want to evaluate them.
-            if hasattr(cls, field_name) and field_name[0] != '_':
-                field = getattr(cls, field_name)
-                if isinstance(field, BaseField):
-                    fields[field_name] = field
-
-        for field_name, field in fields.iteritems():
-            if field.primary_key:
-                cls._meta['id_field'] = field_name
-                break
-
-        cls._register_default_fields()
-
-        for field_name, field in fields.iteritems():
-            setattr(cls, field_name, fieldprop(field_name, field))
-            db_field = field.db_field
-            field.name = field_name
-            field.owner_document = cls
-            if db_field:
-                cls._rename_to_python[db_field] = field_name
-                cls._rename_to_db[field_name] = db_field
-            else:
-                field.db_field = field_name
-
-        exceptions_to_merge = (DoesNotExist, MultipleObjectsReturned)
-        for exc in exceptions_to_merge:
-            # Create new exception and set to new_class
-            name = exc.__name__
-            setattr(cls, name, type(name, (exc,), {}))
-
-        class subclasses(object):
-            def __get__(self, instance, owner):
-                return [owner._class_name] + [cls._class_name for cls in _all_subclasses(owner) if issubclass(cls, Document)]
-
-        cls._subclasses = subclasses()
-
-        _registered_documents.add(cls)
-        _document_registry[cls._class_name] = cls
-
-    @classmethod
-    def _register_default_fields(cls):
-        pass
-
     @classmethod
     def _build_index_specs(cls, meta_indexes):
         """Generate and merge the full index specs
@@ -343,6 +234,14 @@ class BaseDocument(object):
         return fields
 
     @classmethod
+    def _translate_field_name(cls, field, sep='.'):
+        """Translate a field attribute name to a database field name.
+        """
+        parts = field.split(sep)
+        parts = [f.db_field for f in cls._lookup_field(parts)]
+        return '.'.join(parts)
+
+    @classmethod
     def _from_son(cls, son, _auto_dereference=False):
         # get the class name from the document, falling back to the given
         # class if unavailable
@@ -408,7 +307,9 @@ class BaseDocument(object):
     def _to_son(self):
         sets, unsets = self._delta(full=True)
         son = SON(**sets)
-        if self._meta['allow_inheritance']:
+        allow_inheritance = self._meta.get('allow_inheritance',
+                                          ALLOW_INHERITANCE)
+        if allow_inheritance:
             son['_cls'] = self._class_name
         return son
 
@@ -442,6 +343,7 @@ class BaseDocument(object):
         # Get a list of tuples of field names and their current values
         fields = [(field, getattr(self, name))
                   for name, field in self._fields.iteritems()]
+
         #if self._dynamic:
         #    fields += [(field, self._data.get(name))
         #               for name, field in self._dynamic_fields.items()]

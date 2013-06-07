@@ -513,6 +513,9 @@ class ListField(ComplexBaseField):
                and hasattr(value, '__iter__')):
                 return [self.field.prepare_query_value(op, v) for v in value]
             return self.field.prepare_query_value(op, value)
+        else:
+            if op in ('set', 'unset'):
+                return value
         return super(ListField, self).prepare_query_value(op, value)
 
 
@@ -741,7 +744,7 @@ class ReferenceField(BaseField):
                 return obj
 
     def prepare_query_value(self, op, value):
-        return self.to_mongo(value)
+        return self.to_mongo(self.from_python(value))
 
     def validate(self, value):
         if not isinstance(value, (self.document_type, DBRef)):
@@ -816,17 +819,6 @@ class GenericReferenceField(BaseField):
     .. versionadded:: 0.3
     """
 
-    def __get__(self, instance, owner):
-        if instance is None:
-            return self
-
-        value = instance._data.get(self.name)
-        self._auto_dereference = instance._fields[self.name]._auto_dereference
-        if self._auto_dereference and isinstance(value, (dict, SON)):
-            instance._data[self.name] = self.dereference(value)
-
-        return super(GenericReferenceField, self).__get__(instance, owner)
-
     def validate(self, value):
         if not isinstance(value, (Document, DBRef, dict, SON)):
             self.error('GenericReferences can only contain documents')
@@ -849,7 +841,13 @@ class GenericReferenceField(BaseField):
         return doc
 
     def to_python(self, value):
-        return self.dereference(value)
+        if value != None:
+            doc_cls = get_document(value['_cls'])
+            reference = value['_ref']
+            obj = doc_cls(pk=reference.id)
+            obj._lazy = True
+            obj._created = True
+            return obj
 
     def to_mongo(self, document):
         if document is None:

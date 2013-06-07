@@ -12,16 +12,39 @@ from mongoengine.queryset import (DO_NOTHING, DoesNotExist,
 from mongoengine.base.common import _document_registry, ALLOW_INHERITANCE
 from mongoengine.base.fields import BaseField, ComplexBaseField, ObjectIdField
 
-__all__ = ('BaseDocumentMetaclass', 'DocumentMetaclass', 'TopLevelDocumentMetaclass')
-
-class BaseDocumentMetaclass(type):
-    def __init__(cls, name, bases, attrs):
-        super(BaseDocumentMetaclass, cls).__init__(name, bases, attrs)
-        if name not in ('BaseDocument', 'EmbeddedDocument', 'Document'):
-            cls.register()
+__all__ = ('DocumentMetaclass', 'TopLevelDocumentMetaclass')
 
 
-# TODO: integrate these fully into register
+class fieldprop(object):
+    def __init__(self, name, field):
+        self.name = name
+        self.field = field
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self.field
+        else:
+            name = self.name
+            data = instance._internal_data
+            if not name in data:
+                if instance._lazy and name != instance._meta['id_field']:
+                    # We need to fetch the doc from the database.
+                    instance.reload()
+                db_field = instance._rename_to_db.get(name, name)
+                field = self.field
+                try:
+                    data[name] = field.to_python(instance._db_data[db_field])
+                except KeyError:
+                    data[name] = field.default() if callable(field.default) else field.default
+
+            return data[name]
+
+    def __set__(self, instance, value):
+        if instance._lazy:
+            # Fetch the from the database before we assign to a lazy object.
+            instance.reload()
+        instance._internal_data[self.name] = self.field.from_python(value)
+
 
 class DocumentMetaclass(type):
     """Metaclass for all documents.
@@ -79,6 +102,7 @@ class DocumentMetaclass(type):
         for attr_name, attr_value in attrs.iteritems():
             if not isinstance(attr_value, BaseField):
                 continue
+
             attr_value.name = attr_name
             if not attr_value.db_field:
                 attr_value.db_field = attr_name
@@ -87,6 +111,15 @@ class DocumentMetaclass(type):
             # Count names to ensure no db_field redefinitions
             field_names[attr_value.db_field] = field_names.get(
                 attr_value.db_field, 0) + 1
+
+        rename_to_db = {}
+
+        for attr_name, attr_value in doc_fields.iteritems():
+            if attr_value.db_field:
+                rename_to_db[attr_name] = attr_value.db_field
+            attrs[attr_name] = fieldprop(attr_name, attr_value)
+
+        attrs['_rename_to_db'] = rename_to_db
 
         # Ensure no duplicate db_fields
         duplicate_db_fields = [k for k, v in field_names.items() if v > 1]
@@ -363,14 +396,17 @@ class TopLevelDocumentMetaclass(DocumentMetaclass):
                 # Set primary key
                 if not current_pk:
                     new_class._meta['id_field'] = field_name
-                    new_class.id = field
+                    new_class.id = fieldprop('id', field)
 
         # Set primary key if not defined by the document
         if not new_class._meta.get('id_field'):
+            id_field = ObjectIdField(primary_key=True)
+            id_field.name = 'id'
+            id_field._auto_gen = True
+            new_class._fields['id'] = id_field
+            new_class.id = fieldprop('id', new_class._fields['id'])
             new_class._meta['id_field'] = 'id'
-            new_class._fields['id'] = ObjectIdField(db_field='_id')
-            new_class._fields['id'].name = 'id'
-            new_class.id = new_class._fields['id']
+            new_class._rename_to_db['id'] = id_field.db_field
 
         # Merge in exceptions with parent hierarchy
         exceptions_to_merge = (DoesNotExist, MultipleObjectsReturned)

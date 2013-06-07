@@ -19,6 +19,13 @@ class BaseField(object):
 
     .. versionchanged:: 0.5 - added verbose and help text
     """
+
+    # These track each time a Field instance is created. Used to retain order.
+    # The auto_creation_counter is used for fields that MongoEngine implicitly
+    # creates, creation_counter is used for all user-specified fields.
+    creation_counter = 0
+    auto_creation_counter = -1
+
     def __init__(self, db_field=None, required=False, default=None,
                  unique=False, unique_with=None, primary_key=False,
                  validation=None, choices=None, verbose_name=None,
@@ -30,12 +37,22 @@ class BaseField(object):
         self.unique = bool(unique or unique_with)
         self.unique_with = unique_with
         self.primary_key = primary_key
-        if self.primary_key and not db_field:
+        if self.primary_key:
+            if self.db_field:
+                raise ValueError("Can't use primary_key in conjunction with db_field.")
             self.db_field = '_id'
         self.validation = validation
         self.choices = choices
         self.verbose_name = verbose_name
         self.help_text = help_text
+
+        # Adjust the appropriate creation counter, and save our local copy.
+        if self.db_field == '_id':
+            self.creation_counter = BaseField.auto_creation_counter
+            BaseField.auto_creation_counter -= 1
+        else:
+            self.creation_counter = BaseField.creation_counter
+            BaseField.creation_counter += 1
 
     def error(self, message="", errors=None, field_name=None):
         """Raises a ValidationError.
@@ -154,6 +171,9 @@ class ComplexBaseField(BaseField):
         self._owner_document = owner_document
 
     owner_document = property(_get_owner_document, _set_owner_document)
+
+    def prepare_query_value(self, op, value):
+        return self.to_mongo(value)
 
 
 class ObjectIdField(BaseField):

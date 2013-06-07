@@ -3,9 +3,10 @@ import pymongo
 import re
 
 from mongoengine import signals
-from mongoengine.base import BaseDocument
+from mongoengine.base import BaseDocument, get_document
 from mongoengine.base.common import ALLOW_INHERITANCE
 from mongoengine.base.fields import ObjectIdField
+from mongoengine.base.metaclasses import DocumentMetaclass, TopLevelDocumentMetaclass
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
 from mongoengine.queryset import OperationError, NotUniqueError, QuerySet, DoesNotExist
 from mongoengine.queryset.manager import QuerySetManager
@@ -34,6 +35,11 @@ class EmbeddedDocument(BaseDocument):
     `_cls` set :attr:`allow_inheritance` to ``False`` in the :attr:`meta`
     dictionary.
     """
+
+    # The __metaclass__ attribute is removed by 2to3 when running with Python3
+    # my_metaclass is defined so that metaclass can be queried in Python 2 & 3
+    my_metaclass  = DocumentMetaclass
+    __metaclass__ = DocumentMetaclass
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
@@ -87,27 +93,27 @@ class Document(BaseDocument):
     by setting index_cls to False on the meta dictionary for the document.
     """
 
+    # The __metaclass__ attribute is removed by 2to3 when running with Python3
+    # my_metaclass is defined so that metaclass can be queried in Python 2 & 3
+    my_metaclass  = TopLevelDocumentMetaclass
+    __metaclass__ = TopLevelDocumentMetaclass
+
     @classmethod
     def register(cls):
         super(Document, cls).register()
         meta = cls._meta
         meta['index_specs'] = cls._build_index_specs(meta['indexes'])
         cls._collection = None
-        cls.objects = QuerySetManager()
+
+        # hasattr/getattr don't work since it's a property
+        if not 'objects' in dir(cls):
+            cls.objects = QuerySetManager()
+
         id_field = meta['id_field']
         cls._db_id_field = cls._rename_to_db.get(id_field, id_field)
         if not meta.get('collection'):
             meta['collection'] = ''.join('_%s' % c if c.isupper() else c
                                          for c in cls.__name__).strip('_').lower()
-
-    @classmethod
-    def _register_default_fields(cls):
-        meta = cls._meta
-        id_field = meta['id_field']
-        if id_field == 'id' and 'id' not in cls._fields and not meta['abstract']:
-            field = ObjectIdField(primary_key=True, db_field='_id')
-            field._auto_gen = True
-            cls._fields['id'] = field
 
     def pk():
         """Primary key alias
@@ -121,7 +127,28 @@ class Document(BaseDocument):
     pk = pk()
 
     @classmethod
+    def register_delete_rule(cls, document_cls, field_name, rule):
+        """This method registers the delete rules to apply when removing this
+        object.
+        """
+        classes = [get_document(class_name)
+                    for class_name in cls._subclasses
+                    if class_name != cls.__name__] + [cls]
+        documents = [get_document(class_name)
+                     for class_name in document_cls._subclasses
+                     if class_name != document_cls.__name__] + [document_cls]
+
+        for cls in classes:
+            for document_cls in documents:
+                delete_rules = cls._meta.get('delete_rules') or {}
+                delete_rules[(document_cls, field_name)] = rule
+                cls._meta['delete_rules'] = delete_rules
+
+    @classmethod
     def drop_collection(cls):
+        """Drops the entire collection associated with this
+        :class:`~mongoengine.Document` type from the database.
+        """
         cls._collection = None
         db = cls._get_db()
         db.drop_collection(cls._get_collection_name())
@@ -329,7 +356,7 @@ class Document(BaseDocument):
 
                 id_field = self._meta['id_field']
                 del self._internal_data[id_field]
-                self._db_data[self._db_id_field] = object_id
+                self._db_data['_id'] = object_id
 
                 created = True
 
@@ -404,6 +431,11 @@ class Document(BaseDocument):
         return DBRef(self.__class__._get_collection_name(), self.pk)
 
 class DynamicDocument(Document):
+    # The __metaclass__ attribute is removed by 2to3 when running with Python3
+    # my_metaclass is defined so that metaclass can be queried in Python 2 & 3
+    my_metaclass  = TopLevelDocumentMetaclass
+    __metaclass__ = TopLevelDocumentMetaclass
+
     # TODO
     meta = {
         'abstract': True
@@ -411,6 +443,11 @@ class DynamicDocument(Document):
 
 
 class DynamicEmbeddedDocument(EmbeddedDocument):
+    # The __metaclass__ attribute is removed by 2to3 when running with Python3
+    # my_metaclass is defined so that metaclass can be queried in Python 2 & 3
+    my_metaclass  = DocumentMetaclass
+    __metaclass__ = DocumentMetaclass
+
     pass # TODO
 
 
