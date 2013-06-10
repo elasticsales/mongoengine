@@ -1,12 +1,15 @@
+import numbers
+
 from mongoengine.queryset import DoesNotExist, MultipleObjectsReturned
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
 from bson import SON
 import pymongo
 
+from mongoengine.base.fields import BaseField
 from mongoengine.base.fields import ComplexBaseField
 from mongoengine.base.common import _all_subclasses, get_document, ALLOW_INHERITANCE
 from mongoengine.errors import ValidationError, LookUpError
-from mongoengine.base.fields import BaseField
+from mongoengine.common import _import_class
 
 __all__ = ('BaseDocument', 'NON_FIELD_ERRORS')
 
@@ -16,6 +19,8 @@ NON_FIELD_ERRORS = '__all__'
 _set = object.__setattr__
 
 class BaseDocument(object):
+    _dynamic = False
+
     @classmethod
     def _build_index_specs(cls, meta_indexes):
         """Generate and merge the full index specs
@@ -253,19 +258,172 @@ class BaseDocument(object):
     def to_dict(self):
         return dict((field, getattr(self, field)) for field in self._fields)
 
-    def _delta(self, full=False):
+    def _mark_as_changed(self, key):
+        """Marks a key as explicitly changed by the user
+        """
+        if not key:
+            return
+        key = self._db_field_map.get(key, key)
+        if (hasattr(self, '_changed_fields') and
+           key not in self._changed_fields):
+            self._changed_fields.append(key)
+
+    def _clear_changed_fields(self):
+        self._changed_fields = []
+        EmbeddedDocumentField = _import_class("EmbeddedDocumentField")
+        for field_name, field in self._fields.iteritems():
+            if (isinstance(field, ComplexBaseField) and
+               isinstance(field.field, EmbeddedDocumentField)):
+                field_value = getattr(self, field_name, None)
+                if field_value:
+                    for idx in (field_value if isinstance(field_value, dict)
+                                else xrange(len(field_value))):
+                        field_value[idx]._clear_changed_fields()
+            elif isinstance(field, EmbeddedDocumentField):
+                field_value = getattr(self, field_name, None)
+                if field_value:
+                    field_value._clear_changed_fields()
+
+    def _get_changed_fields(self, key='', inspected=None):
+        """Returns a list of all fields that have explicitly been changed.
+        """
+        EmbeddedDocument = _import_class("EmbeddedDocument")
+        DynamicEmbeddedDocument = _import_class("DynamicEmbeddedDocument")
+        _changed_fields = []
+        _changed_fields += getattr(self, '_changed_fields', [])
+
+        inspected = inspected or set()
+        if hasattr(self, 'id'):
+            if self.id in inspected:
+                return _changed_fields
+            inspected.add(self.id)
+
+        field_list = self._fields.copy()
+        if self._dynamic:
+            field_list.update(self._dynamic_fields)
+
+        for field_name in field_list:
+
+            db_field_name = self._db_field_map.get(field_name, field_name)
+            key = '%s.' % db_field_name
+            field = getattr(self, field_name) #self._data.get(field_name, None)
+            if hasattr(field, 'id'):
+                if field.id in inspected:
+                    continue
+                inspected.add(field.id)
+
+            if (isinstance(field, (EmbeddedDocument, DynamicEmbeddedDocument))
+               and db_field_name not in _changed_fields):
+                 # Find all embedded fields that have been changed
+                changed = field._get_changed_fields(key, inspected)
+                _changed_fields += ["%s%s" % (key, k) for k in changed if k]
+            elif (isinstance(field, (list, tuple, dict)) and
+                    db_field_name not in _changed_fields):
+                # Loop list / dict fields as they contain documents
+                # Determine the iterator to use
+                if not hasattr(field, 'items'):
+                    iterator = enumerate(field)
+                else:
+                    iterator = field.iteritems()
+                for index, value in iterator:
+                    if not hasattr(value, '_get_changed_fields'):
+                        continue
+                    list_key = "%s%s." % (key, index)
+                    changed = value._get_changed_fields(list_key, inspected)
+                    _changed_fields += ["%s%s" % (list_key, k)
+                                        for k in changed if k]
+        return _changed_fields
+
+    def _delta(self):
+        """Returns the delta (set, unset) of the changes for a document.
+        Gets any values that have been explicitly changed.
+        """
+        # Handles cases where not loaded from_son but has _id
+        #doc = self.to_mongo()
+        doc = self._full_delta()[0] #dict((field, getattr(self, field)) for field in self._fields)
+
+        set_fields = self._get_changed_fields()
+        set_data = {}
+        unset_data = {}
+        parts = []
+        if hasattr(self, '_changed_fields'):
+            set_data = {}
+            # Fetch each set item from its path
+            for path in set_fields:
+                parts = path.split('.')
+                d = doc
+                new_path = []
+                for p in parts:
+                    if isinstance(d, DBRef):
+                        break
+                    elif isinstance(d, list) and p.isdigit():
+                        d = d[int(p)]
+                    elif hasattr(d, 'get'):
+                        d = d.get(p)
+                    new_path.append(p)
+                path = '.'.join(new_path)
+                set_data[path] = d
+        else:
+            set_data = doc
+            if '_id' in set_data:
+                del(set_data['_id'])
+
+        # Determine if any changed items were actually unset.
+        for path, value in set_data.items():
+            if value or isinstance(value, (numbers.Number, bool)):
+                continue
+
+            # If we've set a value that ain't the default value dont unset it.
+            default = None
+            if (self._dynamic and len(parts) and parts[0] in
+               self._dynamic_fields):
+                del(set_data[path])
+                unset_data[path] = 1
+                continue
+            elif path in self._fields:
+                default = self._fields[path].default
+            else:  # Perform a full lookup for lists / embedded lookups
+                d = self
+                parts = path.split('.')
+                db_field_name = parts.pop()
+                for p in parts:
+                    if isinstance(d, list) and p.isdigit():
+                        d = d[int(p)]
+                    elif (hasattr(d, '__getattribute__') and
+                          not isinstance(d, dict)):
+                        real_path = d._reverse_db_field_map.get(p, p)
+                        d = getattr(d, real_path)
+                    else:
+                        d = d.get(p)
+
+                if hasattr(d, '_fields'):
+                    field_name = d._reverse_db_field_map.get(db_field_name,
+                                                             db_field_name)
+                    if field_name in d._fields:
+                        default = d._fields.get(field_name).default
+                    else:
+                        default = None
+
+            if default is not None:
+                if callable(default):
+                    default = default()
+
+            if default != value:
+                continue
+
+            del(set_data[path])
+            unset_data[path] = 1
+
+        return set_data, unset_data
+
+    def _full_delta(self):
         sets = {}
         unsets = {}
 
-        if full:
-            data = ((field, getattr(self, field)) for field in self._fields)
-        else:
-            # TODO: Be smarter about this and figure out which fields have
-            # actually changed.
-            data = self._internal_data.iteritems()
+        data = ((field, getattr(self, field)) for field in self._fields)
 
         for attr, value in data:
-            db_field = self._rename_to_db.get(attr, attr)
+            db_field = self._db_field_map.get(attr, attr)
             value = self._fields[attr].to_mongo(value)
             if value == None:
                 unsets[db_field] = 1
@@ -275,7 +433,7 @@ class BaseDocument(object):
         return sets, unsets
 
     def _to_son(self):
-        sets, unsets = self._delta(full=True)
+        sets, unsets = self._full_delta()
         son = SON(**sets)
         allow_inheritance = self._meta.get('allow_inheritance',
                                           ALLOW_INHERITANCE)

@@ -65,7 +65,7 @@ class BaseField(object):
                 if instance._lazy and name != instance._meta['id_field']:
                     # We need to fetch the doc from the database.
                     instance.reload()
-                db_field = instance._rename_to_db.get(name, name)
+                db_field = instance._db_field_map.get(name, name)
                 try:
                     data[name] = self.to_python(instance._db_data[db_field])
                 except KeyError:
@@ -77,7 +77,21 @@ class BaseField(object):
         if instance._lazy:
             # Fetch the from the database before we assign to a lazy object.
             instance.reload()
-        instance._internal_data[self.name] = self.from_python(value)
+
+        value = self.from_python(value)
+
+        if instance._created:
+            try:
+                if (self.name not in instance._internal_data or
+                   instance._internal_data[self.name] != value):
+                    instance._mark_as_changed(self.name)
+            except:
+                # Values cant be compared eg: naive and tz datetimes
+                # So mark it as changed
+                instance._mark_as_changed(self.name)
+
+        instance._internal_data[self.name] = value
+
 
     def error(self, message="", errors=None, field_name=None):
         """Raises a ValidationError.

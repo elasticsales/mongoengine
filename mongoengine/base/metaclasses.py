@@ -88,8 +88,6 @@ class DocumentMetaclass(type):
                 rename_to_db[attr_name] = attr_value.db_field
             attrs[attr_name] = attr_value
 
-        attrs['_rename_to_db'] = rename_to_db
-
         # Ensure no duplicate db_fields
         duplicate_db_fields = [k for k, v in field_names.items() if v > 1]
         if duplicate_db_fields:
@@ -375,7 +373,7 @@ class TopLevelDocumentMetaclass(DocumentMetaclass):
             new_class._fields['id'] = id_field
             new_class.id = new_class._fields['id']
             new_class._meta['id_field'] = 'id'
-            new_class._rename_to_db['id'] = id_field.db_field
+            new_class._db_field_map['id'] = id_field.db_field
 
         # Merge in exceptions with parent hierarchy
         exceptions_to_merge = (DoesNotExist, MultipleObjectsReturned)

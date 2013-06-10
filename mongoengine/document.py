@@ -110,7 +110,7 @@ class Document(BaseDocument):
             cls.objects = QuerySetManager()
 
         id_field = meta['id_field']
-        cls._db_id_field = cls._rename_to_db.get(id_field, id_field)
+        cls._db_id_field = cls._db_field_map.get(id_field, id_field)
         if not meta.get('collection'):
             meta['collection'] = ''.join('_%s' % c if c.isupper() else c
                                          for c in cls.__name__).strip('_').lower()
