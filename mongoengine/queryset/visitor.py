@@ -1,8 +1,6 @@
 import copy
 
 from mongoengine.errors import InvalidQueryError
-from mongoengine.python_support import product, reduce
-
 from mongoengine.queryset import transform
 
 __all__ = ('Q',)

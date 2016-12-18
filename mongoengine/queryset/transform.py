@@ -4,7 +4,7 @@ import pymongo
 from bson import SON
 
 from mongoengine.common import _import_class
-from mongoengine.errors import InvalidQueryError, LookUpError
+from mongoengine.errors import InvalidQueryError
 
 __all__ = ('query', 'update')
 
@@ -27,6 +27,10 @@ UPDATE_OPERATORS     = ('set', 'unset', 'inc', 'dec', 'pop', 'push',
                         'push_all', 'pull', 'pull_all', 'add_to_set',
                         'set_on_insert')
 
+def _dedupe_with_order(lst):
+    """ Dedupe a list preserving the order of elements. """
+    seen = set()
+    return [x for x in lst if isinstance(x, dict) or (x not in seen and not seen.add(x))]
 
 def query(_doc_cls=None, _field_operation=False, **query):
     """Transform a query from Django-style format to Mongo format.
@@ -87,7 +91,7 @@ def query(_doc_cls=None, _field_operation=False, **query):
                     value = field.prepare_query_value(op, value)
             elif op in ('in', 'nin', 'all', 'near') and not isinstance(value, dict):
                 # 'in', 'nin' and 'all' require a list of values
-                value = [field.prepare_query_value(op, v) for v in value]
+                value = _dedupe_with_order([field.prepare_query_value(op, v) for v in value])
 
         # if op and op not in COMPARISON_OPERATORS:
         if op:

@@ -98,14 +98,19 @@ class TransformTest(unittest.TestCase):
 
         B(a=a1).save()
 
-        # Works
         q1 = B.objects.filter(a__in=[a1, a2], a=a1)._query
 
-        # Doesn't work
         q2 = B.objects.filter(a__in=[a1, a2])
         q2 = q2.filter(a=a1)._query
 
         self.assertEqual(q1, q2)
+
+    def test_in_operator_dedupe(self):
+        class A(Document):
+            text = StringField()
+
+        q = A.objects.filter(text__in=['a', 'b', 'a'])._query
+        self.assertEqual(q, { 'text': { '$in': ['a', 'b'] } })
 
     def test_raw_query_and_Q_objects(self):
         """
