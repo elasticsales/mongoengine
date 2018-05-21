@@ -903,6 +903,14 @@ class QuerySet(object):
         queryset._initial_query = {}
         return queryset
 
+    def comment(self, text):
+        """Add a comment to the query.
+
+        See https://docs.mongodb.com/manual/reference/method/cursor.comment/#cursor.comment
+        for details.
+        """
+        return self._chainable_method("comment", text)
+
     def explain(self, format=False):
         """Return an explain plan record for the
         :class:`~mongoengine.queryset.QuerySet`\ 's cursor.
@@ -1637,6 +1645,25 @@ class QuerySet(object):
                       code)
         return code
 
+    def _chainable_method(self, method_name, val):
+        """Call a particular method on the PyMongo cursor call a particular chainable method
+        with the provided value.
+        """
+        queryset = self.clone()
+
+        # Get an existing cursor object or create a new one
+        cursor = queryset._cursor
+
+        # Find the requested method on the cursor and call it with the
+        # provided value
+        getattr(cursor, method_name)(val)
+
+        # Cache the value on the queryset._{method_name}
+        setattr(queryset, '_' + method_name, val)
+
+        return queryset
+
+        
     # Deprecated
     def ensure_index(self, **kwargs):
         """Deprecated use :func:`Document.ensure_index`"""
