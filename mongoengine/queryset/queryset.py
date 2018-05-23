@@ -1,10 +1,13 @@
 from __future__ import absolute_import
 
 import copy
+import io
 import itertools
 import operator
+import os
 import pprint
 import re
+import sys
 import warnings
 
 from bson.code import Code
@@ -36,6 +39,58 @@ DENY = 3
 PULL = 4
 
 RE_TYPE = type(re.compile(''))
+
+
+# Borrowed from CPython's stdlib logging
+# https://github.com/python/cpython/blob/master/Lib/logging/__init__.py
+if hasattr(sys, '_getframe'):
+    currentframe = lambda: sys._getframe(1)
+else: #pragma: no cover
+    def currentframe():
+        """Return the frame object for the caller's stack frame."""
+        try:
+            raise Exception
+        except Exception:
+            return sys.exc_info()[2].tb_frame.f_back
+
+
+def dummy():
+    pass
+
+
+_srcfile = os.path.normcase(dummy.__code__.co_filename)
+
+
+def find_caller(stack_info=False):
+    """
+    Find the stack frame of the caller so that we can note the source
+    file name, line number and function name.
+    """
+    f = currentframe()
+    #On some versions of IronPython, currentframe() returns None if
+    #IronPython isn't run with -X:Frames.
+    if f is not None:
+        f = f.f_back
+    rv = "(unknown file)", 0, "(unknown function)", None
+
+    while hasattr(f, "f_code"):
+        co = f.f_code
+        filename = os.path.normcase(co.co_filename)
+        if filename == _srcfile:
+            f = f.f_back
+            continue
+        sinfo = None
+        if stack_info:
+            sio = io.StringIO()
+            sio.write('Stack (most recent call last):\n')
+            traceback.print_stack(f, file=sio)
+            sinfo = sio.getvalue()
+            if sinfo[-1] == '\n':
+                sinfo = sinfo[:-1]
+            sio.close()
+        rv = (co.co_filename, f.f_lineno, co.co_name, sinfo)
+        break
+    return rv
 
 
 class QuerySet(object):
@@ -903,12 +958,15 @@ class QuerySet(object):
         queryset._initial_query = {}
         return queryset
 
-    def comment(self, text):
+    def comment(self, text=None):
         """Add a comment to the query.
 
         See https://docs.mongodb.com/manual/reference/method/cursor.comment/#cursor.comment
         for details.
         """
+        if text is None:
+            filename, line_number, func, sinfo = find_caller()
+            text = '{}({})'.format(filename, line_number)
         return self._chainable_method("comment", text)
 
     def explain(self, format=False):
