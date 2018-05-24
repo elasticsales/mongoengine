@@ -757,6 +757,11 @@ class QuerySet(object):
         if self._cursor_obj:
             c._cursor_obj = self._cursor_obj.clone()
 
+        # Add auto-comment.  Need a way to disable this.
+        filename, line_number, func, sinfo = find_caller()
+        text = '{}({})'.format(filename, line_number)
+        c._cursor.comment(text)
+
         return c
 
     def select_related(self, max_depth=1):
@@ -958,15 +963,12 @@ class QuerySet(object):
         queryset._initial_query = {}
         return queryset
 
-    def comment(self, text=None):
+    def comment(self, text):
         """Add a comment to the query.
 
         See https://docs.mongodb.com/manual/reference/method/cursor.comment/#cursor.comment
         for details.
         """
-        if text is None:
-            filename, line_number, func, sinfo = find_caller()
-            text = '{}({})'.format(filename, line_number)
         return self._chainable_method("comment", text)
 
     def explain(self, format=False):
