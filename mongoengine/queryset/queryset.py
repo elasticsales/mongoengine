@@ -757,11 +757,6 @@ class QuerySet(object):
         if self._cursor_obj:
             c._cursor_obj = self._cursor_obj.clone()
 
-        # Add auto-comment.  Need a way to disable this.
-        filename, line_number, func, sinfo = find_caller()
-        text = '{}({})'.format(filename, line_number)
-        c._cursor.comment(text)
-
         return c
 
     def select_related(self, max_depth=1):
@@ -1402,6 +1397,12 @@ class QuerySet(object):
 
             self._cursor_obj = self._collection.find(self._query,
                                                      **self._cursor_args)
+
+            # Add auto-comment.  Need a way to disable this.
+            filename, line_number, func, sinfo = find_caller()
+            text = '{}({})'.format(filename, line_number)
+            self._cursor_obj.comment(text)
+
             # Apply where clauses to cursor
             if self._where_clause:
                 where_clause = self._sub_js_fields(self._where_clause)
