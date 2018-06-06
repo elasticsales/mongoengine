@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 
 import copy
-import io
 import itertools
 import operator
 import os
@@ -88,7 +87,6 @@ def find_callers():
             f = f.f_back
             continue
         trace_comment.append('{}({})'.format(co.co_filename, f.f_lineno))
-        # rv.append([co.co_filename, f.f_lineno, co.co_name])
         f = f.f_back
         frame += 1
     return trace_comment
