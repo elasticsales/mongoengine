@@ -96,6 +96,8 @@ def get_connection(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
                 msg = 'You have not defined a default connection'
             raise ConnectionError(msg)
         conn_settings = _connection_settings[alias].copy()
+        conn_settings.pop('query_trace', None)
+        conn_settings.pop('trace_depth', None)
 
         if hasattr(pymongo, 'version_tuple'):  # Support for 2.1+
             conn_settings.pop('name', None)
