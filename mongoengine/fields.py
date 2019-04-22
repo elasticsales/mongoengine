@@ -1,4 +1,5 @@
 import datetime
+import decimal
 import itertools
 import re
 import time
@@ -35,7 +36,7 @@ except ImportError:
     ImageOps = None
 
 __all__ = ['StringField',  'URLField',  'EmailField',  'IntField',
-           'FloatField',  'BooleanField',  'DateTimeField',
+           'FloatField', 'DecimalField',  'BooleanField',  'DateTimeField',
            'ComplexDateTimeField',  'EmbeddedDocumentField', 'ObjectIdField',
            'GenericEmbeddedDocumentField',  'DynamicField',  'ListField',
            'SortedListField',  'DictField',  'MapField',  'ReferenceField',
@@ -196,6 +197,22 @@ class FloatField(BaseField):
 
         if self.max_value is not None and value > self.max_value:
             self.error('Float value is too large')
+
+
+class DecimalField(BaseField):
+    """A decimal field.
+
+    This uses strings to store the value in MongoDB, so as not to lose any
+    precision.
+    """
+
+    def to_python(self, value):
+        if not value:
+            return decimal.Decimal(0)
+        return decimal.Decimal(value)
+
+    def to_mongo(self, value):
+        return unicode(value) if value is not None else None
 
 
 class BooleanField(BaseField):
