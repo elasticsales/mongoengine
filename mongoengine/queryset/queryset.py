@@ -3,8 +3,10 @@ from __future__ import absolute_import
 import copy
 import itertools
 import operator
+import os
 import pprint
 import re
+import sys
 import warnings
 
 from bson.code import Code
@@ -20,7 +22,7 @@ from mongoengine.errors import (OperationError, NotUniqueError,
 from mongoengine.queryset import transform
 from mongoengine.queryset.field_list import QueryFieldList
 from mongoengine.queryset.visitor import Q, QNode
-
+from mongoengine.connection import _connection_settings
 
 __all__ = ('QuerySet', 'DO_NOTHING', 'NULLIFY', 'CASCADE', 'DENY', 'PULL')
 
@@ -36,6 +38,58 @@ DENY = 3
 PULL = 4
 
 RE_TYPE = type(re.compile(''))
+
+
+# Borrowed from CPython's stdlib logging
+# https://github.com/python/cpython/blob/master/Lib/logging/__init__.py
+if hasattr(sys, '_getframe'):
+    currentframe = lambda: sys._getframe(1)
+else: #pragma: no cover
+    def currentframe():
+        """Return the frame object for the caller's stack frame."""
+        try:
+            raise Exception
+        except Exception:
+            return sys.exc_info()[2].tb_frame.f_back
+
+
+def dummy():
+    pass
+
+
+_srcfile = os.path.normcase(dummy.__code__.co_filename)
+
+def find_callers():
+    """
+    Find the stack frame of the caller so that we can note the source
+    file name, line number and function name.
+    """
+    try:
+        if _connection_settings['default']['query_trace'] is True:
+            trace_depth = 3
+            try:
+                trace_depth = _connection_settings['default']['trace_depth']
+            except KeyError:
+                pass
+    except KeyError:
+        return None
+    trace_comment = []
+    f = currentframe()
+    #On some versions of IronPython, currentframe() returns None if
+    #IronPython isn't run with -X:Frames.
+    if f is not None:
+        f = f.f_back
+    frame = 0
+    while hasattr(f, "f_code") and frame < trace_depth:
+        co = f.f_code
+        filename = os.path.normcase(co.co_filename)
+        if filename == _srcfile:
+            f = f.f_back
+            continue
+        trace_comment.append('{}({})'.format(co.co_filename, f.f_lineno))
+        f = f.f_back
+        frame += 1
+    return trace_comment
 
 
 class QuerySet(object):
@@ -67,6 +121,7 @@ class QuerySet(object):
         self._result_cache = []
         self._has_more = True
         self._len = None
+        self._comment = find_callers()
 
         # If inheritance is allowed, only return instances and instances of
         # subclasses of the class being used
@@ -903,6 +958,14 @@ class QuerySet(object):
         queryset._initial_query = {}
         return queryset
 
+    def comment(self, text):
+        """Add a comment to the query.
+
+        See https://docs.mongodb.com/manual/reference/method/cursor.comment/#cursor.comment
+        for details.
+        """
+        return self._chainable_method("comment", text)
+
     def explain(self, format=False):
         """Return an explain plan record for the
         :class:`~mongoengine.queryset.QuerySet`\ 's cursor.
@@ -1334,6 +1397,13 @@ class QuerySet(object):
 
             self._cursor_obj = self._collection.find(self._query,
                                                      **self._cursor_args)
+
+            # Auto-omment with stack trace. Set query_trace=True and optionally
+            # set depth with trace_depth in MONGODB_SETTINGS
+            our_comment = find_callers()
+            if our_comment is not None:
+                self._cursor_obj.comment(our_comment)
+
             # Apply where clauses to cursor
             if self._where_clause:
                 where_clause = self._sub_js_fields(self._where_clause)
@@ -1636,6 +1706,25 @@ class QuerySet(object):
         code = re.sub(u'\{\{\s*~([A-z_][A-z_0-9.]+?)\s*\}\}', field_path_sub,
                       code)
         return code
+
+    def _chainable_method(self, method_name, val):
+        """Call a particular method on the PyMongo cursor call a particular chainable method
+        with the provided value.
+        """
+        queryset = self.clone()
+
+        # Get an existing cursor object or create a new one
+        cursor = queryset._cursor
+
+        # Find the requested method on the cursor and call it with the
+        # provided value
+        getattr(cursor, method_name)(val)
+
+        # Cache the value on the queryset._{method_name}
+        setattr(queryset, '_' + method_name, val)
+
+        return queryset
+
 
     # Deprecated
     def ensure_index(self, **kwargs):
