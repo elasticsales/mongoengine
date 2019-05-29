@@ -71,7 +71,7 @@ setup(name='mongoengine',
       long_description=LONG_DESCRIPTION,
       platforms=['any'],
       classifiers=CLASSIFIERS,
-      install_requires=['pymongo>=2.5,<3'],
+      install_requires=['pymongo>=2.8,<=3.3'],
       test_suite='nose.collector',
       **extra_opts
 )
