@@ -54,7 +54,6 @@ class QuerySet(object):
         self._where_clause = None
         self._loaded_fields = QueryFieldList()
         self._ordering = None
-        self._snapshot = False
         self._timeout = True
         self._class_check = True
         self._slave_okay = False
@@ -689,11 +688,13 @@ class QuerySet(object):
         """
         c = self.__class__(self._document, self._collection_obj)
 
-        copy_props = ('_mongo_query', '_initial_query', '_none', '_query_obj',
-                      '_where_clause', '_loaded_fields', '_ordering', '_snapshot',
-                      '_timeout', '_class_check', '_slave_okay', '_read_preference',
-                      '_iter', '_scalar', '_as_pymongo', '_as_pymongo_coerce',
-                      '_limit', '_skip', '_hint', '_batch_size', '_auto_dereference')
+        copy_props = (
+            '_mongo_query', '_initial_query', '_none', '_query_obj',
+            '_where_clause', '_loaded_fields', '_ordering', '_timeout',
+            '_class_check', '_slave_okay', '_read_preference', '_iter',
+            '_scalar', '_as_pymongo', '_as_pymongo_coerce', '_limit', '_skip',
+            '_hint', '_batch_size', '_auto_dereference'
+        )
 
         for prop in copy_props:
             val = getattr(self, prop)
@@ -913,17 +914,6 @@ class QuerySet(object):
         if format:
             plan = pprint.pformat(plan)
         return plan
-
-    def snapshot(self, enabled):
-        """Enable or disable snapshot mode when querying.
-
-        :param enabled: whether or not snapshot mode is enabled
-
-        ..versionchanged:: 0.5 - made chainable
-        """
-        queryset = self.clone()
-        queryset._snapshot = enabled
-        return queryset
 
     def timeout(self, enabled):
         """Enable or disable the default mongod timeout when querying.
@@ -1317,7 +1307,6 @@ class QuerySet(object):
     @property
     def _cursor_args(self):
         cursor_args = {
-            'snapshot': self._snapshot,
             'no_cursor_timeout': not self._timeout,
         }
         if self._read_preference is not None:

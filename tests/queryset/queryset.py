@@ -820,51 +820,25 @@ class QuerySetTest(unittest.TestCase):
         # Check default
         self.assertEqual(
             p._cursor_args,
-            {
-                'snapshot': False,
-                'slave_okay': False,
-                'no_cursor_timeout': False,
-            }
+            {'slave_okay': False, 'no_cursor_timeout': False}
         )
 
-        p = p.snapshot(False).slave_okay(False).timeout(False)
+        p = p.slave_okay(False).timeout(False)
         self.assertEqual(
             p._cursor_args,
-            {
-                'snapshot': False,
-                'slave_okay': False,
-                'no_cursor_timeout': True,
-            }
+            {'slave_okay': False, 'no_cursor_timeout': True},
         )
 
-        p = p.snapshot(True).slave_okay(False).timeout(False)
+        p = p.slave_okay(True).timeout(False)
         self.assertEqual(
             p._cursor_args,
-            {
-                'snapshot': True,
-                'slave_okay': False,
-                'no_cursor_timeout': True,
-            }
+            {'slave_okay': True, 'no_cursor_timeout': True},
         )
 
-        p = p.snapshot(True).slave_okay(True).timeout(False)
+        p = p.slave_okay(True).timeout(True)
         self.assertEqual(
             p._cursor_args,
-            {
-                'snapshot': True,
-                'slave_okay': True,
-                'no_cursor_timeout': True,
-            }
-        )
-
-        p = p.snapshot(True).slave_okay(True).timeout(True)
-        self.assertEqual(
-            p._cursor_args,
-            {
-                'snapshot': True,
-                'slave_okay': True,
-                'no_cursor_timeout': False,
-            }
+            {'slave_okay': True, 'no_cursor_timeout': False},
         )
 
     def test_repeated_iteration(self):
