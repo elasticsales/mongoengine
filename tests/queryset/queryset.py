@@ -3086,8 +3086,7 @@ class QuerySetTest(unittest.TestCase):
         bars = list(Bar.objects(read_preference=ReadPreference.PRIMARY))
         self.assertEqual([], bars)
 
-        self.assertRaises(ConfigurationError, Bar.objects,
-                          read_preference='Primary')
+        self.assertRaises(TypeError, Bar.objects, read_preference='Primary')
 
         # read_preference as a kwarg
         bars = Bar.objects(read_preference=ReadPreference.SECONDARY_PREFERRED)

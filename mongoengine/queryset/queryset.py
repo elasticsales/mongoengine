@@ -90,8 +90,8 @@ class QuerySet(object):
             objects, only the last one will be used
         :param class_check: If set to False bypass class name check when
             querying collection
-        :params read_preference: if set, overrides connection-level
-            read_preference from `ReplicaSetConnection`.
+        :params read_preference: if set, overrides the connection-level
+            read preference.
         :param query: Django-style query keyword arguments
         """
         query = Q(**query)
@@ -925,8 +925,8 @@ class QuerySet(object):
     def read_preference(self, read_preference):
         """Change the read_preference when querying.
 
-        :param read_preference: override ReplicaSetConnection-level
-            preference.
+        :param read_preference: read preference to use instead of the
+            connection-level preference.
         """
         validate_read_preference('read_preference', read_preference)
         queryset = self.clone()
@@ -1296,8 +1296,6 @@ class QuerySet(object):
         cursor_args = {
             'no_cursor_timeout': not self._timeout,
         }
-        if self._read_preference is not None:
-            cursor_args['read_preference'] = self._read_preference
         if self._loaded_fields:
             cursor_args['projection'] = self._loaded_fields.as_dict()
         return cursor_args
@@ -1306,9 +1304,22 @@ class QuerySet(object):
     def _cursor(self):
         if self._cursor_obj is None:
 
-            self._cursor_obj = self._collection.find(self._query,
-                                                     **self._cursor_args)
-            # Apply where clauses to cursor
+            # Create a new PyMongo cursor.
+            # XXX In PyMongo 3+, we define the read preference on a collection
+            # level, not a cursor level. Thus, if read preference is defined,
+            # we need to get a cloned collection object using `with_options`
+            # first.
+            if self._read_preference is not None:
+                self._cursor_obj = (
+                    self._collection
+                        .with_options(read_preference=self._read_preference)
+                        .find(self._query, **self._cursor_args)
+                )
+            else:
+                self._cursor_obj = self._collection.find(self._query,
+                                                         **self._cursor_args)
+
+            # Apply "where" clauses to the cursor.
             if self._where_clause:
                 where_clause = self._sub_js_fields(self._where_clause)
                 self._cursor_obj.where(where_clause)
