@@ -11,6 +11,7 @@ from datetime import datetime
 
 from mongoengine import *
 from mongoengine.connection import get_db, get_connection
+from pymongo.errors import OperationFailure
 
 __all__ = ("IndexesTest", )
 
@@ -422,37 +423,37 @@ class IndexesTest(unittest.TestCase):
                                  [('categories', 1), ('_id', 1)])
 
     def test_hint(self):
-
+        TAGS_INDEX_NAME = 'tags_1'
         class BlogPost(Document):
             tags = ListField(StringField())
             meta = {
                 'indexes': [
-                    'tags',
+                    {
+                        'fields': ['tags'],
+                        'name': TAGS_INDEX_NAME
+                    }
                 ],
             }
 
         BlogPost.drop_collection()
+        BlogPost.ensure_indexes()
 
-        for i in xrange(0, 10):
-            tags = [("tag %i" % n) for n in xrange(0, i % 2)]
+        for i in range(10):
+            tags = [("tag %i" % n) for n in range(i % 2)]
             BlogPost(tags=tags).save()
 
         self.assertEqual(BlogPost.objects.count(), 10)
         self.assertEqual(BlogPost.objects.hint().count(), 10)
-        self.assertEqual(BlogPost.objects.hint([('tags', 1)]).count(), 10)
 
-        self.assertEqual(BlogPost.objects.hint([('ZZ', 1)]).count(), 10)
+        # MongoDB v3.2+ throws an error if an index exists (i.e `tags` in our
+        # case) and you use hint on an index name that does not exist.
+        with self.assertRaises(OperationFailure):
+            BlogPost.objects.hint([('ZZ', 1)]).count()
 
-        if pymongo.version >= '2.8':
-            self.assertEqual(BlogPost.objects.hint('tags').count(), 10)
-        else:
-            def invalid_index():
-                BlogPost.objects.hint('tags')
-            self.assertRaises(TypeError, invalid_index)
+        self.assertEqual(BlogPost.objects.hint(TAGS_INDEX_NAME).count(), 10)
 
-        def invalid_index_2():
-            return BlogPost.objects.hint(('tags', 1))
-        self.assertRaises(Exception, invalid_index_2)
+        with self.assertRaises(Exception):
+            BlogPost.objects.hint(('tags', 1)).next()
 
     def test_unique(self):
         """Ensure that uniqueness constraints are applied to fields.
