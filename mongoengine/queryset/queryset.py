@@ -56,7 +56,6 @@ class QuerySet(object):
         self._ordering = None
         self._timeout = True
         self._class_check = True
-        self._slave_okay = False
         self._read_preference = None
         self._iter = False
         self._scalar = []
@@ -81,8 +80,7 @@ class QuerySet(object):
         self._hint = -1  # Using -1 as None is a valid value for hint
         self._batch_size = None
 
-    def __call__(self, q_obj=None, class_check=True, slave_okay=False,
-                 read_preference=None, **query):
+    def __call__(self, q_obj=None, class_check=True, read_preference=None, **query):
         """Filter the selected documents by calling the
         :class:`~mongoengine.queryset.QuerySet` with a query.
 
@@ -92,8 +90,6 @@ class QuerySet(object):
             objects, only the last one will be used
         :param class_check: If set to False bypass class name check when
             querying collection
-        :param slave_okay: if True, allows this query to be run against a
-            replica secondary.
         :params read_preference: if set, overrides connection-level
             read_preference from `ReplicaSetConnection`.
         :param query: Django-style query keyword arguments
@@ -691,9 +687,9 @@ class QuerySet(object):
         copy_props = (
             '_mongo_query', '_initial_query', '_none', '_query_obj',
             '_where_clause', '_loaded_fields', '_ordering', '_timeout',
-            '_class_check', '_slave_okay', '_read_preference', '_iter',
-            '_scalar', '_as_pymongo', '_as_pymongo_coerce', '_limit', '_skip',
-            '_hint', '_batch_size', '_auto_dereference'
+            '_class_check', '_read_preference', '_iter', '_scalar',
+            '_as_pymongo', '_as_pymongo_coerce', '_limit', '_skip', '_hint',
+            '_batch_size', '_auto_dereference'
         )
 
         for prop in copy_props:
@@ -924,15 +920,6 @@ class QuerySet(object):
         """
         queryset = self.clone()
         queryset._timeout = enabled
-        return queryset
-
-    def slave_okay(self, enabled):
-        """Enable or disable the slave_okay when querying.
-
-        :param enabled: whether or not the slave_okay is enabled
-        """
-        queryset = self.clone()
-        queryset._slave_okay = enabled
         return queryset
 
     def read_preference(self, read_preference):
@@ -1311,8 +1298,6 @@ class QuerySet(object):
         }
         if self._read_preference is not None:
             cursor_args['read_preference'] = self._read_preference
-        else:
-            cursor_args['slave_okay'] = self._slave_okay
         if self._loaded_fields:
             cursor_args['projection'] = self._loaded_fields.as_dict()
         return cursor_args

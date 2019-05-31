@@ -799,47 +799,17 @@ class QuerySetTest(unittest.TestCase):
 
             self.assertEqual(q, 2)
 
-    def test_slave_okay(self):
-        """Ensures that a query can take slave_okay syntax
-        """
-        person1 = self.Person(name="User A", age=20)
-        person1.save()
-        person2 = self.Person(name="User B", age=30)
-        person2.save()
-
-        # Retrieve the first person from the database
-        person = self.Person.objects.slave_okay(True).first()
-        self.assertTrue(isinstance(person, self.Person))
-        self.assertEqual(person.name, "User A")
-        self.assertEqual(person.age, 20)
-
-    def test_cursor_args(self):
+    def test_timeout_and_cursor_args(self):
         """Ensures the cursor args can be set as expected
         """
         p = self.Person.objects
-        # Check default
-        self.assertEqual(
-            p._cursor_args,
-            {'slave_okay': False, 'no_cursor_timeout': False}
-        )
+        self.assertEqual(p._cursor_args, {'no_cursor_timeout': False})
 
-        p = p.slave_okay(False).timeout(False)
-        self.assertEqual(
-            p._cursor_args,
-            {'slave_okay': False, 'no_cursor_timeout': True},
-        )
+        p = p.timeout(False)
+        self.assertEqual(p._cursor_args, {'no_cursor_timeout': True})
 
-        p = p.slave_okay(True).timeout(False)
-        self.assertEqual(
-            p._cursor_args,
-            {'slave_okay': True, 'no_cursor_timeout': True},
-        )
-
-        p = p.slave_okay(True).timeout(True)
-        self.assertEqual(
-            p._cursor_args,
-            {'slave_okay': True, 'no_cursor_timeout': False},
-        )
+        p = p.timeout(True)
+        self.assertEqual(p._cursor_args, {'no_cursor_timeout': False})
 
     def test_repeated_iteration(self):
         """Ensure that QuerySet rewinds itself one iteration finishes.
