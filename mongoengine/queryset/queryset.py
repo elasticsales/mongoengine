@@ -1318,7 +1318,7 @@ class QuerySet(object):
     def _cursor_args(self):
         cursor_args = {
             'snapshot': self._snapshot,
-            'timeout': self._timeout
+            'no_cursor_timeout': not self._timeout,
         }
         if self._read_preference is not None:
             cursor_args['read_preference'] = self._read_preference
