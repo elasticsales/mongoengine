@@ -1325,7 +1325,7 @@ class QuerySet(object):
         else:
             cursor_args['slave_okay'] = self._slave_okay
         if self._loaded_fields:
-            cursor_args['fields'] = self._loaded_fields.as_dict()
+            cursor_args['projection'] = self._loaded_fields.as_dict()
         return cursor_args
 
     @property
