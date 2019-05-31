@@ -74,12 +74,11 @@ class ConnectionTest(unittest.TestCase):
         """
         connect('mongoenginetest', alias='t1', tz_aware=True)
         conn = get_connection('t1')
-
-        self.assertTrue(conn.tz_aware)
+        self.assertTrue(conn.codec_options.tz_aware)
 
         connect('mongoenginetest2', alias='t2')
         conn = get_connection('t2')
-        self.assertFalse(conn.tz_aware)
+        self.assertFalse(conn.codec_options.tz_aware)
 
     def test_datetime(self):
         connect('mongoenginetest', tz_aware=True)
