@@ -624,7 +624,6 @@ class QuerySetTest(unittest.TestCase):
     def test_bulk_insert(self):
         """Ensure that bulk insert works
         """
-
         class Comment(EmbeddedDocument):
             name = StringField()
 
@@ -641,35 +640,31 @@ class QuerySetTest(unittest.TestCase):
         # Recreates the collection
         self.assertEqual(0, Blog.objects.count())
 
+        comment1 = Comment(name='testa')
+        comment2 = Comment(name='testb')
+        post1 = Post(comments=[comment1, comment2])
+        post2 = Post(comments=[comment2, comment2])
+
+        # Check bulk insert using load_bulk=False
+        blogs = [Blog(title="%s" % i, posts=[post1, post2])
+                 for i in range(99)]
         with query_counter() as q:
             self.assertEqual(q, 0)
-
-            comment1 = Comment(name='testa')
-            comment2 = Comment(name='testb')
-            post1 = Post(comments=[comment1, comment2])
-            post2 = Post(comments=[comment2, comment2])
-
-            blogs = []
-            for i in xrange(1, 100):
-                blogs.append(Blog(title="post %s" % i, posts=[post1, post2]))
-
             Blog.objects.insert(blogs, load_bulk=False)
-            if (get_connection().max_wire_version <= 1):
-                self.assertEqual(q, 1)
-            else:
-                self.assertEqual(q, 99)  # profiling logs each doc now in the bulk op
+            self.assertEqual(q, 1)  # 1 entry containing the list of inserts
+
+        self.assertEqual(Blog.objects.count(), len(blogs))
 
         Blog.drop_collection()
         Blog.ensure_indexes()
 
+        # Check bulk insert using load_bulk=True
+        blogs = [Blog(title="%s" % i, posts=[post1, post2])
+                 for i in range(99)]
         with query_counter() as q:
             self.assertEqual(q, 0)
-
             Blog.objects.insert(blogs)
-            if (get_connection().max_wire_version <= 1):
-                self.assertEqual(q, 2) # 1 for insert, and 1 for in bulk fetch
-            else:
-                self.assertEqual(q, 100)  # 99 for insert, and 1 for in bulk fetch
+            self.assertEqual(q, 2)  # 1 for insert 1 for fetch
 
         Blog.drop_collection()
 
@@ -685,60 +680,45 @@ class QuerySetTest(unittest.TestCase):
 
         self.assertEqual(Blog.objects.count(), 2)
 
-        # test handles people trying to upsert
-        def throw_operation_error():
-            blogs = Blog.objects
-            Blog.objects.insert(blogs)
+        # test inserting an existing document (shouldn't be allowed)
+        with self.assertRaises(OperationError) as cm:
+            blog = Blog.objects.first()
+            Blog.objects.insert(blog)
+        self.assertEqual(str(cm.exception), 'Some documents have ObjectIds use doc.update() instead')
 
-        self.assertRaises(OperationError, throw_operation_error)
+        # test inserting a query set
+        with self.assertRaises(OperationError) as cm:
+            blogs_qs = Blog.objects
+            Blog.objects.insert(blogs_qs)
+        self.assertEqual(str(cm.exception), 'Some documents have ObjectIds use doc.update() instead')
 
-        # Test can insert new doc
+        # insert 1 new doc
         new_post = Blog(title="code123", id=ObjectId())
         Blog.objects.insert(new_post)
 
-        # test handles other classes being inserted
-        def throw_operation_error_wrong_doc():
-            class Author(Document):
-                pass
-            Blog.objects.insert(Author())
-
-        self.assertRaises(OperationError, throw_operation_error_wrong_doc)
-
-        def throw_operation_error_not_a_document():
-            Blog.objects.insert("HELLO WORLD")
-
-        self.assertRaises(OperationError, throw_operation_error_not_a_document)
-
         Blog.drop_collection()
-        Blog.ensure_indexes()
+
         blog1 = Blog(title="code", posts=[post1, post2])
         blog1 = Blog.objects.insert(blog1)
         self.assertEqual(blog1.title, "code")
         self.assertEqual(Blog.objects.count(), 1)
 
         Blog.drop_collection()
-        Blog.ensure_indexes()
         blog1 = Blog(title="code", posts=[post1, post2])
         obj_id = Blog.objects.insert(blog1, load_bulk=False)
-        self.assertEqual(obj_id.__class__.__name__, 'ObjectId')
+        self.assertIsInstance(obj_id, ObjectId)
 
         Blog.drop_collection()
         Blog.ensure_indexes()
         post3 = Post(comments=[comment1, comment1])
         blog1 = Blog(title="foo", posts=[post1, post2])
         blog2 = Blog(title="bar", posts=[post2, post3])
-        blog3 = Blog(title="baz", posts=[post1, post2])
         Blog.objects.insert([blog1, blog2])
 
-        def throw_operation_error_not_unique():
-            Blog.objects.insert([blog2, blog3])
+        with self.assertRaises(NotUniqueError):
+            Blog.objects.insert(Blog(title=blog2.title))
 
-        self.assertRaises(NotUniqueError, throw_operation_error_not_unique)
         self.assertEqual(Blog.objects.count(), 2)
-
-        Blog.objects.insert([blog2, blog3], write_concern={"w": 0,
-                            'continue_on_error': True})
-        self.assertEqual(Blog.objects.count(), 3)
 
     def test_get_changed_fields_query_count(self):
 
