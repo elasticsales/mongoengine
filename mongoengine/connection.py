@@ -1,12 +1,13 @@
 import pymongo
-from pymongo import MongoClient, MongoReplicaSetClient, uri_parser
-
+from pymongo import (MongoClient, MongoReplicaSetClient, ReadPreference,
+                     uri_parser)
 
 __all__ = ['ConnectionError', 'connect', 'register_connection',
            'DEFAULT_CONNECTION_NAME']
 
 
 DEFAULT_CONNECTION_NAME = 'default'
+DEFAULT_READ_PREFERENCE = ReadPreference.PRIMARY
 
 
 class ConnectionError(Exception):
@@ -18,9 +19,18 @@ _connections = {}
 _dbs = {}
 
 
-def register_connection(alias, name, host='localhost', port=27017,
-                        is_slave=False, read_preference=False, slaves=None,
-                        username=None, password=None, **kwargs):
+def register_connection(
+    alias,
+    name,
+    host='localhost',
+    port=27017,
+    is_slave=False,
+    read_preference=DEFAULT_READ_PREFERENCE,
+    slaves=None,
+    username=None,
+    password=None,
+    **kwargs
+):
     """Add a connection.
 
     :param alias: the name that will be used to refer to this connection
@@ -29,9 +39,9 @@ def register_connection(alias, name, host='localhost', port=27017,
     :param host: the host name of the :program:`mongod` instance to connect to
     :param port: the port that the :program:`mongod` instance is running on
     :param is_slave: whether the connection can act as a slave
-      ** Depreciated pymongo 2.0.1+
+      ** Deprecated in PyMongo 2.0.1+
     :param read_preference: The read preference for the collection
-       ** Added pymongo 2.1
+      ** Added in PyMongo 2.1
     :param slaves: a list of aliases of slave connections; each of these must
         be a registered connection that has :attr:`is_slave` set to ``True``
     :param username: username to authenticate with
