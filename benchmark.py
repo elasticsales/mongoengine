@@ -7,7 +7,7 @@ def cprofile_main():
     from pymongo import Connection
     connection = Connection()
     connection.drop_database('timeit_test')
-    connection.disconnect()
+    connection.close()
 
     from mongoengine import Document, DictField, connect
     connect("timeit_test")
@@ -170,7 +170,7 @@ myNoddys = noddy.find()
 from pymongo import MongoClient
 connection = MongoClient()
 connection.drop_database('timeit_test')
-connection.disconnect()
+connection.close()
 
 from mongoengine import Document, DictField, connect
 connect("timeit_test")
