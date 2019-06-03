@@ -379,8 +379,13 @@ class InstanceTest(unittest.TestCase):
 
         with query_counter() as q:
             doc.reload()
-            query_op = q.db.system.profile.find({ 'ns': 'mongoenginetest.animal' })[0]
-            self.assertEqual(set(query_op['query'].keys()), set(['_id', 'superphylum']))
+            query_op = q.db.system.profile.find_one({
+                'ns': 'mongoenginetest.animal'
+            })
+            self.assertEqual(
+                set(query_op['query']['filter'].keys()),
+                set(['_id', 'superphylum'])
+            )
 
         Animal.drop_collection()
 
