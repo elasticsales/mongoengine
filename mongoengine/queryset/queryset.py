@@ -81,7 +81,8 @@ class QuerySet(object):
         self._hint = -1  # Using -1 as None is a valid value for hint
         self._batch_size = None
 
-    def __call__(self, q_obj=None, class_check=True, read_preference=None, **query):
+    def __call__(self, q_obj=None, class_check=True, slave_okay=False,
+                 read_preference=None, **query):
         """Filter the selected documents by calling the
         :class:`~mongoengine.queryset.QuerySet` with a query.
 
@@ -91,6 +92,8 @@ class QuerySet(object):
             objects, only the last one will be used
         :param class_check: If set to False bypass class name check when
             querying collection
+        :params slave_okay: a deprecated no-op, not removed at the moment
+            as to not break the signature of this method.
         :params read_preference: if set, overrides the connection-level
             read preference.
         :param query: Django-style query keyword arguments
