@@ -11,7 +11,8 @@ from mongoengine.base.datastructures import WeakInstanceMixin
 from mongoengine.errors import (InvalidQueryError, InvalidDocumentError)
 from mongoengine.queryset import OperationError, NotUniqueError, QuerySet, DoesNotExist
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
-from mongoengine.context_managers import switch_db, switch_collection
+from mongoengine.context_managers import (set_write_concern, switch_db,
+                                          switch_collection)
 
 __all__ = ('Document', 'EmbeddedDocument', 'DynamicDocument',
            'DynamicEmbeddedDocument', 'OperationError',
@@ -19,9 +20,9 @@ __all__ = ('Document', 'EmbeddedDocument', 'DynamicDocument',
 
 _set = object.__setattr__
 
+
 def includes_cls(fields):
-    """ Helper function used for ensuring and comparing indexes
-    """
+    """Helper function used for ensuring and comparing indexes."""
 
     first_field = None
     if len(fields):
@@ -259,7 +260,9 @@ class Document(BaseDocument):
         if not write_concern:
             write_concern = {'w': 1}
 
-        collection = self._get_collection()
+        collection = next(
+            set_write_concern(self._get_collection(), write_concern).gen
+        )
         try:
             if self._created:
                 # Update: Get delta.
@@ -274,13 +277,13 @@ class Document(BaseDocument):
                     update_query['$unset'] = unsets
 
                 if update_query:
-                    collection.update(self._db_object_key, update_query, **write_concern)
+                    collection.update(self._db_object_key, update_query)
 
                 created = False
             else:
                 # Insert: Get full SON.
                 doc = self.to_mongo()
-                object_id = collection.insert(doc, **write_concern)
+                object_id = collection.insert(doc)
                 # Fix pymongo's "return return_one and ids[0] or ids":
                 # If the ID is 0, pymongo wraps it in a list.
                 if isinstance(object_id, list) and not object_id[0]:
@@ -399,7 +402,7 @@ class Document(BaseDocument):
         # Need to add shard key to query, or you get an error
         return self._qs.filter(**self._object_key).update_one(**kwargs)
 
-    def delete(self, **write_concern):
+    def delete(self, write_concern=None):
         """Delete the :class:`~mongoengine.Document` from the database. This
         will only take effect if the document has been previously saved.
 
@@ -416,7 +419,9 @@ class Document(BaseDocument):
             write_concern = {'w': 1}
 
         try:
-            self._qs.filter(**self._object_key).delete(write_concern=write_concern, _from_doc_delete=True)
+            self._qs.filter(**self._object_key).delete(
+                write_concern=write_concern, _from_doc_delete=True
+            )
         except pymongo.errors.OperationFailure, err:
             message = u'Could not delete document (%s)' % err.message
             raise OperationError(message)

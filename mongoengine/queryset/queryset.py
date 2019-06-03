@@ -14,6 +14,7 @@ from pymongo.common import validate_read_preference
 
 from mongoengine import signals
 from mongoengine.common import _import_class
+from mongoengine.context_managers import set_write_concern
 from mongoengine.errors import (OperationError, NotUniqueError,
                                 InvalidQueryError)
 
@@ -365,8 +366,10 @@ class QuerySet(object):
             raw.append(doc.to_mongo())
 
         signals.pre_bulk_insert.send(self._document, documents=docs)
+
         try:
-            ids = self._collection.insert(raw, **write_concern)
+            with set_write_concern(self._collection, write_concern) as collection:
+                ids = collection.insert(raw)
         except pymongo.errors.DuplicateKeyError, err:
             message = 'Could not save document (%s)'
             raise NotUniqueError(message % unicode(err))
@@ -473,7 +476,8 @@ class QuerySet(object):
                     write_concern=write_concern,
                     **{'pull_all__%s' % field_name: self})
 
-        queryset._collection.remove(queryset._query, write_concern=write_concern)
+        with set_write_concern(queryset._collection, write_concern) as coll:
+            coll.remove(queryset._query)
 
     def update(self, upsert=False, multi=True, write_concern=None, **update):
         """Perform an atomic update on the fields matched by the query.
@@ -509,8 +513,10 @@ class QuerySet(object):
                 update["$set"] = {"_cls": queryset._document._class_name}
 
         try:
-            ret = queryset._collection.update(query, update, multi=multi,
-                                              upsert=upsert, **write_concern)
+            with set_write_concern(queryset._collection, write_concern) as collection:
+                ret = collection.update(
+                    query, update, multi=multi, upsert=upsert
+                )
             if ret is not None and 'n' in ret:
                 return ret['n']
         except pymongo.errors.DuplicateKeyError, err:
@@ -536,7 +542,11 @@ class QuerySet(object):
         .. versionadded:: 0.2
         """
         return self.update(
-            upsert=upsert, multi=False, write_concern=write_concern, **update)
+            upsert=upsert,
+            multi=False,
+            write_concern=write_concern,
+            **update
+        )
 
     def modify(self, upsert=False, full_response=False, remove=False, new=False, **update):
         """Update and return the updated document.
