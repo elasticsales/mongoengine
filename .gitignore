@@ -10,6 +10,7 @@ build/
 dist/
 mongoengine.egg-info/
 env/
+venv/
 .settings
 .project
 .pydevproject
