@@ -10,6 +10,7 @@ import warnings
 from bson.code import Code
 from bson import json_util
 import pymongo
+from pymongo.collection import ReturnDocument
 from pymongo.common import validate_read_preference
 
 from mongoengine import signals
@@ -584,17 +585,29 @@ class QuerySet(object):
 
         queryset = self.clone()
         query = queryset._query
-        update = transform.update(queryset._document, **update)
+        if not remove:
+            update = transform.update(queryset._document, **update)
         sort = queryset._ordering
 
         try:
-            result = queryset._collection.find_and_modify(
-                query, update, upsert=upsert, sort=sort, remove=remove, new=new,
-                full_response=full_response, **self._cursor_args)
-        except pymongo.errors.DuplicateKeyError, err:
-            raise NotUniqueError(u"Update failed (%s)" % err)
-        except pymongo.errors.OperationFailure, err:
-            raise OperationError(u"Update failed (%s)" % err)
+            if full_response:
+                msg = 'With PyMongo 3+, it is not possible anymore to get the full response.'
+                warnings.warn(msg, DeprecationWarning)
+            if remove:
+                result = queryset._collection.find_one_and_delete(
+                    query, sort=sort, **self._cursor_args)
+            else:
+                if new:
+                    return_doc = ReturnDocument.AFTER
+                else:
+                    return_doc = ReturnDocument.BEFORE
+                result = queryset._collection.find_one_and_update(
+                    query, update, upsert=upsert, sort=sort, return_document=return_doc,
+                    **self._cursor_args)
+        except pymongo.errors.DuplicateKeyError as err:
+            raise NotUniqueError(u'Update failed (%s)' % err)
+        except pymongo.errors.OperationFailure as err:
+            raise OperationError(u'Update failed (%s)' % err)
 
         if full_response:
             if result["value"] is not None:
