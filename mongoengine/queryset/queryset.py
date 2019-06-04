@@ -1185,12 +1185,19 @@ class QuerySet(object):
             return 0
 
     def aggregate_sum(self, field):
-        result = self._document._get_collection().aggregate([
-            { '$match': self._query },
-            { '$group': { '_id': 'sum', 'total': { '$sum': '$' + field } } }
-        ])
-        if result['result']:
-            return result['result'][0]['total']
+        """Sum over the values of the specified field.
+
+        :param field: the field to sum over; use dot notation to refer to
+            embedded document fields
+        """
+        db_field = self._fields_to_dbfields([field]).pop()
+        pipeline = [
+            {'$match': self._query},
+            {'$group': {'_id': 'sum', 'total': {'$sum': '$' + db_field}}}
+        ]
+        result = tuple(self._document._get_collection().aggregate(pipeline))
+        if result:
+            return result[0]['total']
         return 0
 
     def average(self, field):
@@ -1234,12 +1241,14 @@ class QuerySet(object):
             return 0
 
     def aggregate_average(self, field):
-        result = self._document._get_collection().aggregate([
-            { '$match': self._query },
-            { '$group': { '_id': 'avg', 'total': { '$avg': '$' + field } } }
-        ])
-        if result['result']:
-            return result['result'][0]['total']
+        db_field = self._fields_to_dbfields([field]).pop()
+        pipeline = [
+            {'$match': self._query},
+            {'$group': {'_id': 'avg', 'total': {'$avg': '$' + db_field}}}
+        ]
+        result = tuple(self._document._get_collection().aggregate(pipeline))
+        if result:
+            return result[0]['total']
         return 0
 
     def item_frequencies(self, field, normalize=False, map_reduce=True):

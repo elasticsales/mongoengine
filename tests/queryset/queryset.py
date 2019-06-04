@@ -2137,33 +2137,78 @@ class QuerySetTest(unittest.TestCase):
         freqs = Test.objects.item_frequencies('val', map_reduce=True, normalize=True)
         self.assertEqual(freqs, {1: 50.0/70, 2: 20.0/70})
 
+
     def test_average(self):
-        """Ensure that field can be averaged correctly.
-        """
+        """Ensure that field can be averaged correctly."""
+        ages = [0, 23, 54, 12, 94, 27]
+        for i, age in enumerate(ages):
+            self.Person(name='test%s' % i, age=age).save()
+        self.Person(name='ageless person').save()
+
+        avg = float(sum(ages)) / (len(ages))
+        self.assertAlmostEqual(int(self.Person.objects.average('age')), avg)
+
+    def test_aggregate_average(self):
+        ages = [0, 23, 54, 12, 94, 27]
+        for i, age in enumerate(ages):
+            self.Person(name='test%s' % i, age=age).save()
+        self.Person(name='ageless person').save()
+
+        avg = float(sum(ages)) / (len(ages))
+        self.assertAlmostEqual(
+            int(self.Person.objects.aggregate_average('age')), avg
+        )
+
+    def test_average_over_zero(self):
         self.Person(name='person', age=0).save()
         self.assertEqual(int(self.Person.objects.average('age')), 0)
 
-        ages = [23, 54, 12, 94, 27]
-        for i, age in enumerate(ages):
-            self.Person(name='test%s' % i, age=age).save()
-
-        avg = float(sum(ages)) / (len(ages) + 1) # take into account the 0
-        self.assertAlmostEqual(int(self.Person.objects.average('age')), avg)
-
-        self.Person(name='ageless person').save()
-        self.assertEqual(int(self.Person.objects.average('age')), avg)
+    def test_aggregate_average_over_zero(self):
+        self.Person(name='person', age=0).save()
+        self.assertEqual(int(self.Person.objects.aggregate_average('age')), 0)
 
     def test_sum(self):
-        """Ensure that field can be summed over correctly.
-        """
-        ages = [23, 54, 12, 94, 27]
+        """Ensure that field can be summed over correctly."""
+        ages = [0, 23, 54, 12, 94, 27]
         for i, age in enumerate(ages):
             self.Person(name='test%s' % i, age=age).save()
-
-        self.assertEqual(int(self.Person.objects.sum('age')), sum(ages))
-
         self.Person(name='ageless person').save()
+
         self.assertEqual(int(self.Person.objects.sum('age')), sum(ages))
+
+    def test_aggregate_sum(self):
+        ages = [0, 23, 54, 12, 94, 27]
+        for i, age in enumerate(ages):
+            self.Person(name='test%s' % i, age=age).save()
+        self.Person(name='ageless person').save()
+
+        self.assertEqual(
+            int(self.Person.objects.aggregate_sum('age')), sum(ages)
+        )
+
+    def test_aggregate_average_over_db_field(self):
+        class UserVisit(Document):
+            num_visits = IntField(db_field='visits')
+
+        UserVisit.drop_collection()
+
+        UserVisit.objects.create(num_visits=20)
+        UserVisit.objects.create(num_visits=10)
+
+        self.assertEqual(
+            UserVisit.objects.aggregate_average('num_visits'), 15
+        )
+
+    def test_aggregate_sum_over_db_field(self):
+        class UserVisit(Document):
+            num_visits = IntField(db_field='visits')
+
+        UserVisit.drop_collection()
+
+        UserVisit.objects.create(num_visits=10)
+        UserVisit.objects.create(num_visits=5)
+
+        self.assertEqual(UserVisit.objects.aggregate_sum('num_visits'), 15)
 
     def test_distinct(self):
         """Ensure that the QuerySet.distinct method works.
