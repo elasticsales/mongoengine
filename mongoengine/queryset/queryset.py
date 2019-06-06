@@ -434,12 +434,7 @@ class QuerySet(object):
     def delete(self, write_concern=None, _from_doc_delete=False):
         """Delete the documents matched by the query.
 
-        :param write_concern: Extra keyword arguments are passed down which
-            will be used as options for the resultant
-            ``getLastError`` command.  For example,
-            ``save(..., write_concern={w: 2, fsync: True}, ...)`` will
-            wait until at least two servers have recorded the write and
-            will force an fsync on the primary server.
+        :param write_concern: Write concern of this operation.
         :param _from_doc_delete: True when called from document delete therefore
             signals will have been triggered so don't loop.
         """
@@ -493,7 +488,7 @@ class QuerySet(object):
                     **{'pull_all__%s' % field_name: self})
 
         with set_write_concern(queryset._collection, write_concern) as coll:
-            coll.remove(queryset._query)
+            coll.delete_many(queryset._query)
 
     def update(self, upsert=False, multi=True, write_concern=None, **update):
         """Perform an atomic update on the fields matched by the query.

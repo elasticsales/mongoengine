@@ -38,8 +38,8 @@ class ConnectionTest(unittest.TestCase):
         """Ensure that the connect() method works properly with uri's
         """
         c = connect(db='mongoenginetest', alias='admin')
-        c.admin.system.users.remove({})
-        c.mongoenginetest.system.users.remove({})
+        c.admin.system.users.delete_many({})
+        c.mongoenginetest.system.users.delete_many({})
 
         c.admin.add_user("admin", "password")
         c.admin.authenticate("admin", "password")
