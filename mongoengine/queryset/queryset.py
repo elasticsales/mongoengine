@@ -500,12 +500,7 @@ class QuerySet(object):
 
         :param upsert: Any existing document with that "_id" is overwritten.
         :param multi: Update multiple documents.
-        :param write_concern: Extra keyword arguments are passed down which
-            will be used as options for the resultant
-            ``getLastError`` command.  For example,
-            ``save(..., write_concern={w: 2, fsync: True}, ...)`` will
-            wait until at least two servers have recorded the write and
-            will force an fsync on the primary server.
+        :param write_concern: Write concern of this operation.
         :param update: Django-style update keyword arguments
 
         .. versionadded:: 0.2
@@ -527,14 +522,14 @@ class QuerySet(object):
                 update["$set"]["_cls"] = queryset._document._class_name
             else:
                 update["$set"] = {"_cls": queryset._document._class_name}
-
         try:
             with set_write_concern(queryset._collection, write_concern) as collection:
-                ret = collection.update(
-                    query, update, multi=multi, upsert=upsert
-                )
-            if ret is not None and 'n' in ret:
-                return ret['n']
+                update_func = collection.update_one
+                if multi:
+                    update_func = collection.update_many
+                result = update_func(query, update, upsert=upsert)
+            if result.raw_result:
+                return result.raw_result['n']
         except pymongo.errors.DuplicateKeyError, err:
             raise NotUniqueError(u'Update failed (%s)' % unicode(err))
         except pymongo.errors.OperationFailure, err:
