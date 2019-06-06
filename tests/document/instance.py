@@ -2226,8 +2226,9 @@ class InstanceTest(unittest.TestCase):
         user = User(username="Ross", foo="bar")
         self.assertTrue(user.foo)
 
-        User._get_collection().save({"_id": "Ross", "foo": "Bar",
-                                     "data": [1, 2, 3]})
+        User._get_collection().insert_one(
+            {"_id": "Ross", "foo": "Bar", "data": [1, 2, 3]}
+        )
 
         user = User.objects.first()
         self.assertEqual("Ross", user.username)
