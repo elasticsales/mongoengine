@@ -277,24 +277,20 @@ class Document(BaseDocument):
                     update_query['$unset'] = unsets
 
                 if update_query:
-                    collection.update(self._db_object_key, update_query)
+                    collection.update_one(self._db_object_key, update_query)
 
                 created = False
             else:
                 # Insert: Get full SON.
                 doc = self.to_mongo()
-                object_id = collection.insert(doc)
-                # Fix pymongo's "return return_one and ids[0] or ids":
-                # If the ID is 0, pymongo wraps it in a list.
-                if isinstance(object_id, list) and not object_id[0]:
-                    object_id = object_id[0]
-
+                object_id = collection.insert_one(doc).inserted_id
                 id_field = self._meta['id_field']
                 del self._internal_data[id_field]
                 _set(self, '_db_data', doc)
                 doc['_id'] = object_id
 
                 created = True
+
             cascade = (self._meta.get('cascade', False)
                        if cascade is None else cascade)
             if cascade:
