@@ -328,19 +328,16 @@ class QuerySet(object):
             result = None
         return result
 
-    def insert(self, doc_or_docs, load_bulk=True, write_concern=None):
+    def insert(self, doc_or_docs, load_bulk=True, write_concern=None,
+               signal_kwargs=None):
         """bulk insert documents
 
         :param docs_or_doc: a document or list of documents to be inserted
         :param load_bulk (optional): If True returns the list of document
-            instances
-        :param write_concern: Extra keyword arguments are passed down to
-                :meth:`~pymongo.collection.Collection.insert`
-                which will be used as options for the resultant
-                ``getLastError`` command.  For example,
-                ``insert(..., {w: 2, fsync: True})`` will wait until at least
-                two servers have recorded the write and will force an fsync on
-                each server being written to.
+            instances.
+        :param write_concern: Write concern of this operation.
+        :parm signal_kwargs: (optional) kwargs dictionary to be passed to
+            the signal calls.
 
         By default returns document instances, set ``load_bulk`` to False to
         return just ``ObjectIds``
@@ -358,26 +355,39 @@ class QuerySet(object):
             return_one = True
             docs = [docs]
 
-        raw = []
         for doc in docs:
             if not isinstance(doc, self._document):
                 msg = ("Some documents inserted aren't instances of %s"
                        % str(self._document))
                 raise OperationError(msg)
             if doc.pk and doc._created:
-                msg = "Some documents have ObjectIds use doc.update() instead"
+                msg = 'Some documents have ObjectIds use doc.update() instead'
                 raise OperationError(msg)
-            raw.append(doc.to_mongo())
 
-        signals.pre_bulk_insert.send(self._document, documents=docs)
+        signal_kwargs = signal_kwargs or {}
+        signals.pre_bulk_insert.send(self._document,
+                                     documents=docs, **signal_kwargs)
+
+        raw = [doc.to_mongo() for doc in docs]
+
+        with set_write_concern(self._collection, write_concern) as collection:
+            insert_func = collection.insert_many
+            if return_one:
+                raw = raw[0]
+                insert_func = collection.insert_one
 
         try:
-            with set_write_concern(self._collection, write_concern) as collection:
-                ids = collection.insert(raw)
-        except pymongo.errors.DuplicateKeyError, err:
+            inserted_result = insert_func(raw)
+            ids = [inserted_result.inserted_id] if return_one else inserted_result.inserted_ids
+        except pymongo.errors.DuplicateKeyError as err:
             message = 'Could not save document (%s)'
             raise NotUniqueError(message % unicode(err))
-        except pymongo.errors.OperationFailure, err:
+        except pymongo.errors.BulkWriteError as err:
+            # inserting documents that already have an _id field will
+            # give huge performance debt or raise
+            message = u'Document must not have _id value before bulk write (%s)'
+            raise NotUniqueError(message % unicode(err))
+        except pymongo.errors.OperationFailure as err:
             message = 'Could not save document (%s)'
             if re.match('^E1100[01] duplicate key', unicode(err)):
                 # E11000 - duplicate key error index
@@ -386,18 +396,20 @@ class QuerySet(object):
                 raise NotUniqueError(message % unicode(err))
             raise OperationError(message % unicode(err))
 
+        # Apply inserted_ids to documents
+        for doc, doc_id in zip(docs, ids):
+            doc.pk = doc_id
+
         if not load_bulk:
             signals.post_bulk_insert.send(
                 self._document, documents=docs, loaded=False)
             return return_one and ids[0] or ids
 
         documents = self.in_bulk(ids)
-        results = []
-        for obj_id in ids:
-            results.append(documents.get(obj_id))
+        results = [documents.get(obj_id) for obj_id in ids]
         signals.post_bulk_insert.send(
-            self._document, documents=results, loaded=True)
-        return return_one and results[0] or results
+            self._document, documents=results, loaded=True, **signal_kwargs)
+        return results[0] if return_one else results
 
     def count(self, with_limit_and_skip=True):
         """Count the selected elements in the query.
