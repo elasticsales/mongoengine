@@ -1172,36 +1172,6 @@ class QuerySet(object):
     def sum(self, field):
         """Sum over the values of the specified field.
 
-        :param field: the field to sum over; use dot-notation to refer to
-            embedded document fields
-
-        .. versionchanged:: 0.5 - updated to map_reduce as db.eval doesnt work
-            with sharding.
-        """
-        map_func = Code("""
-            function() {
-                emit(1, this[field] || 0);
-            }
-        """, scope={'field': field})
-
-        reduce_func = Code("""
-            function(key, values) {
-                var sum = 0;
-                for (var i in values) {
-                    sum += values[i];
-                }
-                return sum;
-            }
-        """)
-
-        for result in self.map_reduce(map_func, reduce_func, output='inline'):
-            return result.value
-        else:
-            return 0
-
-    def aggregate_sum(self, field):
-        """Sum over the values of the specified field.
-
         :param field: the field to sum over; use dot notation to refer to
             embedded document fields
         """
@@ -1216,46 +1186,6 @@ class QuerySet(object):
         return 0
 
     def average(self, field):
-        """Average over the values of the specified field.
-
-        :param field: the field to average over; use dot-notation to refer to
-            embedded document fields
-
-        .. versionchanged:: 0.5 - updated to map_reduce as db.eval doesnt work
-            with sharding.
-        """
-        map_func = Code("""
-            function() {
-                if (this.hasOwnProperty(field))
-                    emit(1, {t: this[field] || 0, c: 1});
-            }
-        """, scope={'field': field})
-
-        reduce_func = Code("""
-            function(key, values) {
-                var out = {t: 0, c: 0};
-                for (var i in values) {
-                    var value = values[i];
-                    out.t += value.t;
-                    out.c += value.c;
-                }
-                return out;
-            }
-        """)
-
-        finalize_func = Code("""
-            function(key, value) {
-                return value.t / value.c;
-            }
-        """)
-
-        for result in self.map_reduce(map_func, reduce_func,
-                                      finalize_f=finalize_func, output='inline'):
-            return result.value
-        else:
-            return 0
-
-    def aggregate_average(self, field):
         db_field = self._fields_to_dbfields([field]).pop()
         pipeline = [
             {'$match': self._query},
