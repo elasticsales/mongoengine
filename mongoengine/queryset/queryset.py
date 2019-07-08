@@ -920,7 +920,7 @@ class QuerySet(object):
         queryset._ordering = queryset._get_order_by(keys)
         return queryset
 
-    def clear_initial_query(self):
+    def clear_cls_query(self):
         """ Sometimes we don't want the default _cls filter to be included in
         the query. This is a method to clear it.
         """

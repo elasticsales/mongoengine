@@ -3087,14 +3087,14 @@ class QuerySetTest(unittest.TestCase):
         Test.objects(test='foo').update_one(upsert=True, set__test='foo')
         self.assertTrue('_cls' in Test._collection.find_one())
 
-    def test_clear_initial_query(self):
+    def test_clear_cls_query(self):
         class Test(Document):
             meta = {'allow_inheritance': True}
             test = StringField()
 
         Test.drop_collection()
         Test.objects.create(test='foo')
-        tests = Test.objects.clear_initial_query().all()
+        tests = Test.objects.clear_cls_query().all()
         self.assertEqual(tests.count(), 1)
         self.assertEqual(tests._initial_query, {})
 
