@@ -1,5 +1,6 @@
 .*
 !.gitignore
+!.circleci
 *~
 *.py[co]
 .*.sw[po]
