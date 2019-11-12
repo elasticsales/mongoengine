@@ -268,7 +268,8 @@ class InheritanceTest(unittest.TestCase):
 
         # Check that _cls etc aren't present on simple documents
         dog = Animal(name='dog').save()
-        self.assertEqual(dog.to_mongo().keys(), ['_id', 'name'])
+        # Dict key order changes between python 2.7 and 3.5
+        self.assertEqual(sorted(dog.to_mongo().keys()), ['_id', 'name'])
 
         collection = self.db[Animal._get_collection_name()]
         obj = collection.find_one()

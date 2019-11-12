@@ -135,7 +135,10 @@ class DocumentProxy(LocalProxy):
     @property
     def __class__(self):
         # We need to fetch the object to determine to which class it belongs.
-        return self._get_current_object().__class__
+        try:
+            return self._get_current_object().__class__
+        except DoesNotExist:
+            return DocumentProxy
 
     def _lazy():
         def fget(self):
