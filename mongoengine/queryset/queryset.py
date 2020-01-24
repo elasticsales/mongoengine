@@ -1,5 +1,3 @@
-
-
 import copy
 import itertools
 import operator
@@ -7,22 +5,20 @@ import pprint
 import re
 import warnings
 
-from bson.code import Code
-from bson import json_util
 import pymongo
+from bson import json_util
+from bson.code import Code
 from pymongo.collection import ReturnDocument
 from pymongo.common import validate_read_preference
+from pymongo.read_concern import ReadConcern
 
 from mongoengine import signals
 from mongoengine.common import _import_class
-from mongoengine.context_managers import set_write_concern
-from mongoengine.errors import (OperationError, NotUniqueError,
-                                InvalidQueryError)
-
+from mongoengine.context_managers import set_read_write_concern, set_write_concern
+from mongoengine.errors import InvalidQueryError, NotUniqueError, OperationError
 from mongoengine.queryset import transform
 from mongoengine.queryset.field_list import QueryFieldList
 from mongoengine.queryset.visitor import Q, QNode
-
 
 __all__ = ('QuerySet', 'DO_NOTHING', 'NULLIFY', 'CASCADE', 'DENY', 'PULL')
 
@@ -59,6 +55,7 @@ class QuerySet(object):
         self._timeout = True
         self._class_check = True
         self._read_preference = None
+        self._read_concern = None
         self._iter = False
         self._scalar = []
         self._none = False
@@ -490,12 +487,15 @@ class QuerySet(object):
         with set_write_concern(queryset._collection, write_concern) as coll:
             coll.delete_many(queryset._query)
 
-    def update(self, upsert=False, multi=True, write_concern=None, **update):
+    def update(
+        self, upsert=False, multi=True, write_concern=None, read_concern=None, **update
+    ):
         """Perform an atomic update on the fields matched by the query.
 
         :param upsert: Any existing document with that "_id" is overwritten.
         :param multi: Update multiple documents.
         :param write_concern: Write concern of this operation.
+        :param read_concern: Override the read concern for the operation
         :param update: Django-style update keyword arguments
 
         .. versionadded:: 0.2
@@ -518,7 +518,9 @@ class QuerySet(object):
             else:
                 update["$set"] = {"_cls": queryset._document._class_name}
         try:
-            with set_write_concern(queryset._collection, write_concern) as collection:
+            with set_read_write_concern(
+                queryset._collection, write_concern, read_concern
+            ) as collection:
                 update_func = collection.update_one
                 if multi:
                     update_func = collection.update_many
@@ -962,6 +964,20 @@ class QuerySet(object):
         queryset._cursor_obj = None  # we need to re-create the cursor object whenever we apply read_preference
         return queryset
 
+    def read_concern(self, read_concern):
+        """Change the read_concern when querying.
+
+        :param read_concern: override ReplicaSetConnection-level
+            preference.
+        """
+        if read_concern is not None and not isinstance(read_concern, ReadConcern):
+            raise TypeError("%r is not a read concern." % (read_concern,))
+
+        queryset = self.clone()
+        queryset._read_concern = read_concern
+        queryset._cursor_obj = None  # we need to re-create the cursor object whenever we apply read_concern
+        return queryset
+
     def scalar(self, *fields):
         """Instead of returning Document instances, return either a specific
         value or a tuple of values in order.
@@ -1276,10 +1292,10 @@ class QuerySet(object):
             # level, not a cursor level. Thus, if read preference is defined,
             # we need to get a cloned collection object using `with_options`
             # first.
-            if self._read_preference is not None:
+            if self._read_preference is not None or self._read_concern is not None:
                 self._cursor_obj = (
                     self._collection
-                        .with_options(read_preference=self._read_preference)
+                        .with_options(read_preference=self._read_preference, read_concern=self._read_concern)
                         .find(self._query, **self._cursor_args)
                 )
             else:

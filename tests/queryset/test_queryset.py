@@ -1,26 +1,25 @@
 import sys
+
 sys.path[0:0] = [""]
 
 import unittest
 import uuid
-from nose.plugins.skip import SkipTest
-
 from datetime import datetime, timedelta
 
 import pymongo
-from pymongo.errors import ConfigurationError
-from pymongo.read_preferences import ReadPreference
-
 from bson import ObjectId
+from nose.plugins.skip import SkipTest
+from pymongo.errors import ConfigurationError
+from pymongo.read_concern import ReadConcern
+from pymongo.read_preferences import ReadPreference
 
 from mongoengine import *
 from mongoengine.connection import get_connection
-from mongoengine.python_support import PY3
 from mongoengine.context_managers import query_counter
-from mongoengine.queryset import (QuerySet, QuerySetManager,
-                                  MultipleObjectsReturned, DoesNotExist,
-                                  queryset_manager)
 from mongoengine.errors import InvalidQueryError
+from mongoengine.python_support import PY3
+from mongoengine.queryset import (DoesNotExist, MultipleObjectsReturned,
+                                  QuerySet, QuerySetManager, queryset_manager)
 
 __all__ = ("QuerySetTest",)
 
@@ -3186,6 +3185,54 @@ class QuerySetTest(unittest.TestCase):
             bars._cursor.collection.read_preference,
             ReadPreference.SECONDARY_PREFERRED
         )
+
+    def test_read_concern(self):
+        class Bar(Document):
+            txt = StringField()
+
+            meta = {"indexes": ["txt"]}
+
+        Bar.drop_collection()
+        bar = Bar.objects.create(txt="xyz")
+
+        bars = list(Bar.objects.read_concern(None))
+        assert bars == [bar]
+
+        bars = Bar.objects.read_concern(ReadConcern(level='local'))
+        assert bars._read_concern == ReadConcern(level='local')
+        assert (
+            bars._cursor.collection.read_concern
+            == ReadConcern(level='local')
+        )
+
+        # Make sure that `.read_concern(...)` does accept string values.
+        with pytest.raises(TypeError):
+            Bar.objects.read_concern('local')
+
+        def assert_read_concern(qs, expected_read_concern):
+            assert qs._read_concern == expected_read_concern
+            assert qs._cursor.collection.read_concern == expected_read_concern
+
+        # Make sure read concern is respected after a `.skip(...)`.
+        bars = Bar.objects.skip(1).read_concern(ReadConcern('majority'))
+        assert_read_concern(bars, ReadConcern('majority'))
+
+        # Make sure read concern is respected after a `.limit(...)`.
+        bars = Bar.objects.limit(1).read_concern(ReadConcern('majority'))
+        assert_read_concern(bars, ReadConcern('majority'))
+
+        # Make sure read concern is respected after an `.order_by(...)`.
+        bars = Bar.objects.order_by("txt").read_concern(
+            ReadConcern('majority')
+        )
+        assert_read_concern(bars, ReadConcern('majority'))
+
+        # Make sure read concern is respected after a `.hint(...)`.
+        bars = Bar.objects.hint([("txt", 1)]).read_concern(
+            ReadConcern('majority')
+        )
+        assert_read_concern(bars, ReadConcern('majority'))
+
 
     def test_json_simple(self):
 
