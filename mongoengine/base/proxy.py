@@ -124,7 +124,19 @@ class LocalProxy(object):
 
 
 class DocumentProxy(LocalProxy):
-    __slots__ = ('__document_type', '__document', '__pk')
+    __slots__ = (
+        '__document_type',
+        '__document',
+        '__pk',
+        '__parent_ref_instance',
+        '__parent_ref_field_name',
+    )
+
+    def _set_parent_ref(self, instance, field_name):
+        object.__setattr__(self, '_DocumentProxy__parent_ref_instance',
+                instance)
+        object.__setattr__(self, '_DocumentProxy__parent_ref_field_name',
+                field_name)
 
     def __init__(self, document_type, pk):
         object.__setattr__(self, '_DocumentProxy__document_type', document_type)
@@ -186,7 +198,17 @@ class DocumentProxy(LocalProxy):
             collection = self.__document_type._get_collection()
             son = collection.find_one({'_id': self.__pk})
             if son is None:
-                raise DoesNotExist('Document has been deleted.')
+                error =  'Document ({} {}'.format(
+                    collection.name, self.__pk
+                )
+                if self.__parent_ref_instance:
+                    error += ', referenced by {} {} in field {}'.format(
+                        self.__parent_ref_instance.__class__.__name__,
+                        self.__parent_ref_instance.pk,
+                        self.__parent_ref_field_name,
+                    )
+                error += ') has been deleted.'
+                raise DoesNotExist(error)
             document = self.__document_type._from_son(son)
             object.__setattr__(self, '_DocumentProxy__document', document)
         return self.__document
