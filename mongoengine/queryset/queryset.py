@@ -962,6 +962,14 @@ class QuerySet(object):
         queryset._cursor_obj = None  # we need to re-create the cursor object whenever we apply read_preference
         return queryset
 
+    def comment(self, text):
+         """Add a comment to the query.
+
+         See https://docs.mongodb.com/manual/reference/method/cursor.comment/#cursor.comment
+         for details.
+         """
+         return self._chainable_method("comment", text)
+
     def scalar(self, *fields):
         """Instead of returning Document instances, return either a specific
         value or a tuple of values in order.
@@ -1604,3 +1612,21 @@ class QuerySet(object):
                "Use Doc.ensure_indexes() instead.")
         warnings.warn(msg, DeprecationWarning)
         self._document.__class__.ensure_indexes()
+
+    def _chainable_method(self, method_name, val):
+         """Call a particular method on the PyMongo cursor call a particular chainable method
+         with the provided value.
+         """
+         queryset = self.clone()
+
+         # Get an existing cursor object or create a new one
+         cursor = queryset._cursor
+
+         # Find the requested method on the cursor and call it with the
+         # provided value
+         getattr(cursor, method_name)(val)
+
+         # Cache the value on the queryset._{method_name}
+         setattr(queryset, '_' + method_name, val)
+
+         return queryset
