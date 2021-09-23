@@ -604,7 +604,7 @@ class ListField(ComplexBaseField):
             self.error('ListField max length is exceeded')
 
         if self.field:
-            if op in ('set', 'unset') and (
+            if op in ('set', 'unset', None) and (
                 not isinstance(value, basestring) and
                 not isinstance(value, BaseDocument) and
                 hasattr(value, '__iter__')
