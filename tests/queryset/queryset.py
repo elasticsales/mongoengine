@@ -789,13 +789,13 @@ class QuerySetTest(unittest.TestCase):
         """Ensures the cursor args can be set as expected
         """
         p = self.Person.objects
-        self.assertEqual(p._cursor_args, {'no_cursor_timeout': False})
+        self.assertEqual(p._cursor_args, {})
+
+        p = p.timeout(True)
+        self.assertEqual(p._cursor_args, {})
 
         p = p.timeout(False)
         self.assertEqual(p._cursor_args, {'no_cursor_timeout': True})
-
-        p = p.timeout(True)
-        self.assertEqual(p._cursor_args, {'no_cursor_timeout': False})
 
     def test_repeated_iteration(self):
         """Ensure that QuerySet rewinds itself one iteration finishes.

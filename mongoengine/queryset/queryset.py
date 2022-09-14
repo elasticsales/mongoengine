@@ -1260,9 +1260,9 @@ class QuerySet(object):
 
     @property
     def _cursor_args(self):
-        cursor_args = {
-            'no_cursor_timeout': not self._timeout,
-        }
+        cursor_args = {}
+        if not self._timeout:
+            cursor_args['no_cursor_timeout'] = True
         if self._loaded_fields:
             cursor_args['projection'] = self._loaded_fields.as_dict()
         return cursor_args
