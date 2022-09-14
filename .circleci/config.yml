@@ -4,8 +4,6 @@ workflows:
   version: 2
   workflow:
     jobs:
-      - test-3.5
-      - test-3.6
       - test-3.7
       - test-3.8
 
@@ -21,18 +19,6 @@ defaults: &defaults
       command: python setup.py test
 
 jobs:
-
-  test-3.5:
-    <<: *defaults
-    docker:
-    - image: circleci/python:3.5
-    - image: mongo:3.2.19
-
-  test-3.6:
-    <<: *defaults
-    docker:
-    - image: circleci/python:3.6
-    - image: mongo:3.2.19
 
   test-3.7:
     <<: *defaults
