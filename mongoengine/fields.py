@@ -25,9 +25,9 @@ from mongoengine.base import (BaseField, ComplexBaseField, ObjectIdField, GeoJso
 from mongoengine.base.datastructures import BaseList, BaseDict
 from mongoengine.base.proxy import DocumentProxy
 from mongoengine.queryset import DoesNotExist
-from queryset import DO_NOTHING, QuerySet
-from document import Document, EmbeddedDocument
-from connection import get_db, DEFAULT_CONNECTION_NAME
+from .queryset import DO_NOTHING, QuerySet
+from .document import Document, EmbeddedDocument
+from .connection import get_db, DEFAULT_CONNECTION_NAME
 
 try:
     from PIL import Image, ImageOps
@@ -69,7 +69,7 @@ class StringField(BaseField):
             return super(StringField, self).from_python(value)
 
     def validate(self, value):
-        if not isinstance(value, basestring):
+        if not isinstance(value, str):
             self.error('StringField only accepts string values')
 
         if self.max_length is not None and len(value) > self.max_length:
@@ -85,7 +85,7 @@ class StringField(BaseField):
         return None
 
     def prepare_query_value(self, op, value):
-        if not isinstance(op, basestring):
+        if not isinstance(op, str):
             return value
 
         # for exact search, return the value immediately
@@ -214,7 +214,7 @@ class DecimalField(BaseField):
         return decimal.Decimal(value)
 
     def to_mongo(self, value):
-        return unicode(value) if value is not None else None
+        return str(value) if value is not None else None
 
 
 class BooleanField(BaseField):
@@ -279,7 +279,7 @@ class DateTimeField(BaseField):
         if not isinstance(value, (datetime.datetime, datetime.date)):
             value = self._parse_datetime(value)
             if not value:
-                self.error(u'cannot parse date "%s"' % orig_value)
+                self.error('cannot parse date "%s"' % orig_value)
 
     def from_python(self, value):
         return self.prepare_query_value(None, value) or value
@@ -294,7 +294,7 @@ class DateTimeField(BaseField):
         if callable(value):
             return value()
 
-        if not isinstance(value, basestring):
+        if not isinstance(value, str):
             return None
 
         return self._parse_datetime(value)
@@ -365,7 +365,7 @@ class ComplexDateTimeField(StringField):
         datetime.datetime(2011, 6, 8, 20, 26, 24, 192284)
         """
         data = data.split(',')
-        data = map(int, data)
+        data = list(map(int, data))
         values = {}
         for i in range(7):
             values[self.names[i]] = data[i]
@@ -410,7 +410,7 @@ class EmbeddedDocumentField(BaseField):
     """
 
     def __init__(self, document_type, **kwargs):
-        if not isinstance(document_type, basestring):
+        if not isinstance(document_type, str):
             if not issubclass(document_type, EmbeddedDocument):
                 self.error('Invalid embedded document class provided to an '
                            'EmbeddedDocumentField')
@@ -419,7 +419,7 @@ class EmbeddedDocumentField(BaseField):
 
     @property
     def document_type(self):
-        if isinstance(self.document_type_obj, basestring):
+        if isinstance(self.document_type_obj, str):
             if self.document_type_obj == RECURSIVE_REFERENCE_CONSTANT:
                 self.document_type_obj = self.owner_document
             else:
@@ -496,7 +496,7 @@ class DynamicField(BaseField):
         """Convert a Python type to a MongoDBcompatible type.
         """
 
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             return value
 
         if hasattr(value, 'to_mongo'):
@@ -516,19 +516,19 @@ class DynamicField(BaseField):
             value = dict([(k, v) for k, v in enumerate(value)])
 
         data = {}
-        for k, v in value.iteritems():
+        for k, v in value.items():
             data[k] = self.to_mongo(v)
 
         value = data
         if is_list:  # Convert back to a list
-            value = [v for k, v in sorted(data.iteritems(), key=itemgetter(0))]
+            value = [v for k, v in sorted(iter(data.items()), key=itemgetter(0))]
         return value
 
     def lookup_member(self, member_name):
         return member_name
 
     def prepare_query_value(self, op, value):
-        if isinstance(value, basestring):
+        if isinstance(value, str):
             from mongoengine.fields import StringField
             return StringField().prepare_query_value(op, value)
         return self.to_mongo(value)
@@ -586,7 +586,7 @@ class ListField(ComplexBaseField):
         """Make sure that a list of valid fields is being used.
         """
         if (not isinstance(value, (list, tuple, QuerySet)) or
-           isinstance(value, basestring)):
+           isinstance(value, str)):
             self.error('Only lists and tuples may be used in a list field')
 
         # Validate that max_length is not exceeded. Note that it's still
@@ -605,7 +605,7 @@ class ListField(ComplexBaseField):
 
         if self.field:
             if op in ('set', 'unset', None) and (
-                not isinstance(value, basestring) and
+                not isinstance(value, str) and
                 not isinstance(value, BaseDocument) and
                 hasattr(value, '__iter__')
             ):
@@ -636,9 +636,9 @@ class SortedListField(ListField):
     _order_reverse = False
 
     def __init__(self, field, **kwargs):
-        if 'ordering' in kwargs.keys():
+        if 'ordering' in list(kwargs.keys()):
             self._ordering = kwargs.pop('ordering')
-        if 'reverse' in kwargs.keys():
+        if 'reverse' in list(kwargs.keys()):
             self._order_reverse = kwargs.pop('reverse')
         super(SortedListField, self).__init__(field, **kwargs)
 
@@ -656,15 +656,15 @@ def key_not_string(d):
     """ Helper function to recursively determine if any key in a dictionary is
     not a string.
     """
-    for k, v in d.items():
-        if not isinstance(k, basestring) or (isinstance(v, dict) and key_not_string(v)):
+    for k, v in list(d.items()):
+        if not isinstance(k, str) or (isinstance(v, dict) and key_not_string(v)):
             return True
 
 def key_has_dot_or_dollar(d):
     """ Helper function to recursively determine if any key in a dictionary
     contains a dot or a dollar sign.
     """
-    for k, v in d.items():
+    for k, v in list(d.items()):
         if ('.' in k or '$' in k) or (isinstance(v, dict) and key_has_dot_or_dollar(v)):
             return True
 
@@ -689,23 +689,23 @@ class DictField(ComplexBaseField):
 
     def from_python(self, val):
         from_python = getattr(self.field, 'from_python', None)
-        return {k: from_python(v) for k, v in val.iteritems()} if from_python else val
+        return {k: from_python(v) for k, v in val.items()} if from_python else val
 
     def to_python(self, val):
         to_python = getattr(self.field, 'to_python', None)
-        return {k: to_python(v) for k, v in val.iteritems()} if to_python and val else val or None
+        return {k: to_python(v) for k, v in val.items()} if to_python and val else val or None
 
     def value_for_instance(self, value, instance, name=None):
         name = name or self.name
         if value and self.field:
             value_for_instance = getattr(self.field, 'value_for_instance', None)
             if value_for_instance:
-                value = {k: value_for_instance(v, instance, name) for k, v in value.iteritems()}
+                value = {k: value_for_instance(v, instance, name) for k, v in value.items()}
         return BaseDict(value or {}, instance, name)
 
     def to_mongo(self, val):
         to_mongo = getattr(self.field, 'to_mongo', None)
-        return {k: to_mongo(v) for k, v in val.iteritems()} if to_mongo and val else val or None
+        return {k: to_mongo(v) for k, v in val.items()} if to_mongo and val else val or None
 
     def validate(self, value):
         """Make sure that a list of valid fields is being used.
@@ -730,7 +730,7 @@ class DictField(ComplexBaseField):
                            'istartswith', 'endswith', 'iendswith',
                            'exact', 'iexact']
 
-        if op in match_operators and isinstance(value, basestring):
+        if op in match_operators and isinstance(value, str):
             return StringField().prepare_query_value(op, value)
         return super(DictField, self).prepare_query_value(op, value)
 
@@ -795,8 +795,8 @@ class ReferenceField(BaseField):
         :param reverse_delete_rule: Determines what to do when the referring
           object is deleted
         """
-        if not isinstance(document_type, basestring):
-            if not issubclass(document_type, (Document, basestring)):
+        if not isinstance(document_type, str):
+            if not issubclass(document_type, (Document, str)):
                 self.error('Argument to ReferenceField constructor must be a '
                            'document class or a string')
 
@@ -807,7 +807,7 @@ class ReferenceField(BaseField):
 
     @property
     def document_type(self):
-        if isinstance(self.document_type_obj, basestring):
+        if isinstance(self.document_type_obj, str):
             if self.document_type_obj == RECURSIVE_REFERENCE_CONSTANT:
                 self.document_type_obj = self.owner_document
             else:
@@ -945,7 +945,7 @@ class SafeReferenceListField(ListField):
         result = super(SafeReferenceListField, self).to_python(value)
         if result:
             objs = self.field.document_type.objects.in_bulk([obj.id for obj in result])
-            return filter(None, [objs.get(obj.id) for obj in result])
+            return [_f for _f in [objs.get(obj.id) for obj in result] if _f]
 
 class GenericReferenceField(BaseField):
     """A reference to *any* :class:`~mongoengine.document.Document` subclass
@@ -1087,7 +1087,7 @@ class GridFSProxy(object):
     def __get__(self, instance, value):
         return self
 
-    def __nonzero__(self):
+    def __bool__(self):
         return bool(self.grid_id)
 
     def __getstate__(self):
@@ -1282,7 +1282,7 @@ class ImageGridFsProxy(GridFSProxy):
         try:
             img = Image.open(file_obj)
             img_format = img.format
-        except Exception, e:
+        except Exception as e:
             raise ValidationError('Invalid image: %s' % e)
 
         if (field.size and (img.size[0] > field.size['width'] or
@@ -1411,7 +1411,7 @@ class ImageField(FileField):
 
         params_size = ('width', 'height', 'force')
         extra_args = dict(size=size, thumbnail_size=thumbnail_size)
-        for att_name, att in extra_args.items():
+        for att_name, att in list(extra_args.items()):
             value = None
             if isinstance(att, (tuple, list)):
                 if PY3:
@@ -1556,8 +1556,8 @@ class UUIDField(BaseField):
         if not self._binary:
             original_value = value
             try:
-                if not isinstance(value, basestring):
-                    value = unicode(value)
+                if not isinstance(value, str):
+                    value = str(value)
                 return uuid.UUID(value)
             except:
                 return original_value
@@ -1565,8 +1565,8 @@ class UUIDField(BaseField):
 
     def to_mongo(self, value):
         if not self._binary:
-            return unicode(value)
-        elif isinstance(value, basestring):
+            return str(value)
+        elif isinstance(value, str):
             return uuid.UUID(value)
         return value
 
@@ -1577,11 +1577,11 @@ class UUIDField(BaseField):
 
     def validate(self, value):
         if not isinstance(value, uuid.UUID):
-            if not isinstance(value, basestring):
+            if not isinstance(value, str):
                 value = str(value)
             try:
                 value = uuid.UUID(value)
-            except Exception, exc:
+            except Exception as exc:
                 self.error('Could not convert to UUID: %s' % exc)
 
 
