@@ -37,8 +37,6 @@ CLASSIFIERS = [
     'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent',
     'Programming Language :: Python',
-    "Programming Language :: Python :: 2",
-    "Programming Language :: Python :: 2.7",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.1",
     "Programming Language :: Python :: 3.2",
@@ -48,14 +46,8 @@ CLASSIFIERS = [
 ]
 
 extra_opts = {"packages": find_packages(exclude=["tests", "tests.*"])}
-if sys.version_info[0] == 3:
-    extra_opts['use_2to3'] = True
-    extra_opts['tests_require'] = ['nose', 'coverage', 'blinker']
-    if "test" in sys.argv or "nosetests" in sys.argv:
-        extra_opts['packages'] = find_packages()
-        extra_opts['package_data'] = {"tests": ["fields/mongoengine.png", "fields/mongodb_leaf.png"]}
-else:
-    extra_opts['tests_require'] = ['nose', 'coverage', 'blinker', 'python-dateutil']
+
+assert sys.version_info[0] == 3
 
 setup(name='mongoengine',
       version=VERSION,
