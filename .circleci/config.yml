@@ -17,7 +17,7 @@ defaults: &defaults
       command: pip install --user -r test-requirements.txt
   - run:
       name: Test
-      command: nosetests
+      command: pytest tests/
 
 jobs:
   test-3.8:
