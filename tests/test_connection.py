@@ -21,16 +21,16 @@ class ConnectionTest(unittest.TestCase):
     def test_connect(self):
         """Ensure that the connect() method works properly.
         """
-        connect('mongoenginetest')
+        connect('mongomallard-test')
 
         conn = get_connection()
         self.assertTrue(isinstance(conn, pymongo.mongo_client.MongoClient))
 
         db = get_db()
         self.assertTrue(isinstance(db, pymongo.database.Database))
-        self.assertEqual(db.name, 'mongoenginetest')
+        self.assertEqual(db.name, 'mongomallard-test')
 
-        connect('mongoenginetest2', alias='testdb')
+        connect('mongomallard-test2', alias='testdb')
         conn = get_connection('testdb')
         self.assertTrue(isinstance(conn, pymongo.mongo_client.MongoClient))
 
