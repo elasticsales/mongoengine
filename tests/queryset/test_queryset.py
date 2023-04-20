@@ -1324,10 +1324,13 @@ class QuerySetTest(unittest.TestCase):
         self.Person.objects()[:1].delete()
         self.assertEqual(1, BlogPost.objects.count())
 
-
     def test_reference_field_find(self):
         """Ensure cascading deletion of referring documents from the database.
         """
+        # Needed to test a regression where extra queries are made
+        # when polymorphic `ReferenceField`s are queried by pk (and not object)
+        assert self.Person._meta["allow_inheritance"]
+
         class BlogPost(Document):
             content = StringField()
             author = ReferenceField(self.Person)
@@ -1338,13 +1341,16 @@ class QuerySetTest(unittest.TestCase):
         me = self.Person(name='Test User').save()
         BlogPost(content="test 123", author=me).save()
 
-        self.assertEqual(1, BlogPost.objects(author=me).count())
-        self.assertEqual(1, BlogPost.objects(author=me.pk).count())
-        self.assertEqual(1, BlogPost.objects(author="%s" % me.pk).count())
+        with query_counter() as q:
+            self.assertEqual(1, BlogPost.objects(author=me).count())
+            self.assertEqual(1, BlogPost.objects(author=me.pk).count())
+            self.assertEqual(1, BlogPost.objects(author="%s" % me.pk).count())
 
-        self.assertEqual(1, BlogPost.objects(author__in=[me]).count())
-        self.assertEqual(1, BlogPost.objects(author__in=[me.pk]).count())
-        self.assertEqual(1, BlogPost.objects(author__in=["%s" % me.pk]).count())
+            self.assertEqual(1, BlogPost.objects(author__in=[me]).count())
+            self.assertEqual(1, BlogPost.objects(author__in=[me.pk]).count())
+            self.assertEqual(1, BlogPost.objects(author__in=["%s" % me.pk]).count())
+
+            self.assertEqual(q, 6)
 
     def test_reference_field_find_dbref(self):
         """Ensure cascading deletion of referring documents from the database.

@@ -815,12 +815,19 @@ class ReferenceField(BaseField):
         return self.document_type_obj
 
     def to_mongo(self, value):
-        if isinstance(value, DBRef):
+        # We need to avoid using `isinstance` here. When the value is a
+        # `DocumentProxy`, calling `isinstance` will cause the underlying
+        # document to be fetched from the database, because `DocumentProxy`
+        # fakes its class using a custom `__class__` which does the fetch.
+
+        type_ = type(value)
+
+        if issubclass(type_, DBRef):
             if self.dbref:
                 return value
             else:
                 return value.id
-        elif isinstance(value, (Document, DocumentProxy)):
+        elif issubclass(type_, (Document, DocumentProxy)):
             document_type = self.document_type
             # We need the id from the saved object to create the DBRef
             pk = value.pk
