@@ -1,9 +1,10 @@
-from mongoengine import *
-from timeit import repeat
 import unittest
+from timeit import repeat
+
+from mongoengine import *
 
 conn_settings = {
-    'db': 'mongomallard-test',
+    "db": "mongoenginetest",
 }
 
 connect(**conn_settings)
