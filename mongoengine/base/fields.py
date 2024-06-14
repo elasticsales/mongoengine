@@ -10,6 +10,7 @@ from mongoengine.errors import ValidationError
 
 from mongoengine.base.common import ALLOW_INHERITANCE
 from mongoengine.base.datastructures import BaseDict, BaseList
+from mongoengine.base.proxy import DocumentProxy
 
 __all__ = ("BaseField", "ComplexBaseField", "ObjectIdField", "GeoJsonBaseField")
 
@@ -103,9 +104,12 @@ class BaseField(object):
                     value = self.default() if callable(self.default) else self.default
                 else:
                     value = self.to_python(db_value)
+                    if isinstance(value, DocumentProxy):
+                        value._set_parent_ref(instance, name)
 
                 if hasattr(self, 'value_for_instance'):
                     value = self.value_for_instance(value, instance)
+
                 data[name] = value
 
             return data[name]
