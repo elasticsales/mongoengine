@@ -186,7 +186,7 @@ class DocumentProxy(LocalProxy):
             collection = self.__document_type._get_collection()
             son = collection.find_one({'_id': self.__pk})
             if son is None:
-                raise DoesNotExist('Document has been deleted.')
+                raise DoesNotExist(f"Document {self.pk} has been deleted.")
             document = self.__document_type._from_son(son)
             object.__setattr__(self, '_DocumentProxy__document', document)
         return self.__document

@@ -495,7 +495,7 @@ class Document(BaseDocument, metaclass=TopLevelDocumentMetaclass):
         else:
             son = collection.find_one(self._db_object_key)
         if son == None:
-            raise self.DoesNotExist('Document has been deleted.')
+            raise self.DoesNotExist(f'Document {self.pk} has been deleted.')
         _set(self, '_db_data', son)
         _set(self, '_internal_data', {})
         _set(self, '_lazy', False)
