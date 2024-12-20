@@ -4,9 +4,8 @@ workflows:
   version: 2
   workflow:
     jobs:
-      - test-3.8
-      - test-3.9
-      - test-3.10
+      - test-3.11
+      - test-3.12
 
 defaults: &defaults
   working_directory: ~/code
@@ -20,18 +19,13 @@ defaults: &defaults
       command: pytest tests/
 
 jobs:
-  test-3.8:
+  test-3.11:
     <<: *defaults
     docker:
-    - image: circleci/python:3.8
-    - image: mongo:3.2.19
-  test-3.9:
+    - image: circleci/python:3.11
+    - image: mongo:6.0.16
+  test-3.12:
     <<: *defaults
     docker:
-    - image: circleci/python:3.9
-    - image: mongo:3.2.19
-  test-3.10:
-    <<: *defaults
-    docker:
-    - image: circleci/python:3.10
-    - image: mongo:3.2.19
+    - image: circleci/python:3.12
+    - image: mongo:6.0.16
