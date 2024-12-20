@@ -1680,6 +1680,8 @@ class QuerySetTest(unittest.TestCase):
             title = StringField(primary_key=True)
             tags = ListField(StringField())
 
+        BlogPost.drop_collection()
+
         post1 = BlogPost(title="Post #1", tags=["mongodb", "mongoengine"])
         post2 = BlogPost(title="Post #2", tags=["django", "mongodb"])
         post3 = BlogPost(title="Post #3", tags=["hitchcock films"])
@@ -1708,12 +1710,15 @@ class QuerySetTest(unittest.TestCase):
             }
         """
 
-        results = BlogPost.objects.map_reduce(map_f, reduce_f, "myresults")
+        results = BlogPost.objects.order_by("_id").map_reduce(
+            map_f, reduce_f, "myresults"
+        )
         results = list(results)
 
-        self.assertEqual(results[0].object, post1)
-        self.assertEqual(results[1].object, post2)
-        self.assertEqual(results[2].object, post3)
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[0].object.id, post1.id)
+        self.assertEqual(results[1].object.id, post2.id)
+        self.assertEqual(results[2].object.id, post3.id)
 
         BlogPost.drop_collection()
 
