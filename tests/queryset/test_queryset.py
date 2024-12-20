@@ -1049,101 +1049,6 @@ class QuerySetTest(unittest.TestCase):
 
         BlogPost.drop_collection()
 
-    def test_exec_js_query(self):
-        """Ensure that queries are properly formed for use in exec_js.
-        """
-        class BlogPost(Document):
-            hits = IntField()
-            published = BooleanField()
-
-        BlogPost.drop_collection()
-
-        post1 = BlogPost(hits=1, published=False)
-        post1.save()
-
-        post2 = BlogPost(hits=1, published=True)
-        post2.save()
-
-        post3 = BlogPost(hits=1, published=True)
-        post3.save()
-
-        js_func = """
-            function(hitsField) {
-                var count = 0;
-                db[collection].find(query).forEach(function(doc) {
-                    count += doc[hitsField];
-                });
-                return count;
-            }
-        """
-
-        # Ensure that normal queries work
-        c = BlogPost.objects(published=True).exec_js(js_func, 'hits')
-        self.assertEqual(c, 2)
-
-        c = BlogPost.objects(published=False).exec_js(js_func, 'hits')
-        self.assertEqual(c, 1)
-
-        BlogPost.drop_collection()
-
-    def test_exec_js_field_sub(self):
-        """Ensure that field substitutions occur properly in exec_js functions.
-        """
-        class Comment(EmbeddedDocument):
-            content = StringField(db_field='body')
-
-        class BlogPost(Document):
-            name = StringField(db_field='doc-name')
-            comments = ListField(EmbeddedDocumentField(Comment),
-                                 db_field='cmnts')
-
-        BlogPost.drop_collection()
-
-        comments1 = [Comment(content='cool'), Comment(content='yay')]
-        post1 = BlogPost(name='post1', comments=comments1)
-        post1.save()
-
-        comments2 = [Comment(content='nice stuff')]
-        post2 = BlogPost(name='post2', comments=comments2)
-        post2.save()
-
-        code = """
-        function getComments() {
-            var comments = [];
-            db[collection].find(query).forEach(function(doc) {
-                var docComments = doc[~comments];
-                for (var i = 0; i < docComments.length; i++) {
-                    comments.push({
-                        'document': doc[~name],
-                        'comment': doc[~comments][i][~comments.content]
-                    });
-                }
-            });
-            return comments;
-        }
-        """
-
-        sub_code = BlogPost.objects._sub_js_fields(code)
-        code_chunks = ['doc["cmnts"];', 'doc["doc-name"],',
-                       'doc["cmnts"][i]["body"]']
-        for chunk in code_chunks:
-            self.assertTrue(chunk in sub_code)
-
-        results = BlogPost.objects.exec_js(code)
-        expected_results = [
-            {'comment': 'cool', 'document': 'post1'},
-            {'comment': 'yay', 'document': 'post1'},
-            {'comment': 'nice stuff', 'document': 'post2'},
-        ]
-        self.assertEqual(results, expected_results)
-
-        # Test template style
-        code = "{{~comments.content}}"
-        sub_code = BlogPost.objects._sub_js_fields(code)
-        self.assertEqual("cmnts.body", sub_code)
-
-        BlogPost.drop_collection()
-
     def test_delete(self):
         """Ensure that documents are properly deleted from the database.
         """
@@ -1948,9 +1853,7 @@ class QuerySetTest(unittest.TestCase):
             self.assertEqual(f['watch'], 2)
             self.assertEqual(f['film'], 1)
 
-        exec_js = BlogPost.objects.item_frequencies('tags')
-        map_reduce = BlogPost.objects.item_frequencies('tags', map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = BlogPost.objects.item_frequencies("tags")
         test_assertions(map_reduce)
 
         # Ensure query is taken into account
@@ -1961,9 +1864,7 @@ class QuerySetTest(unittest.TestCase):
             self.assertEqual(f['actors'], 1)
             self.assertEqual(f['watch'], 1)
 
-        exec_js = BlogPost.objects(hits__gt=1).item_frequencies('tags')
-        map_reduce = BlogPost.objects(hits__gt=1).item_frequencies('tags', map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = BlogPost.objects(hits__gt=1).item_frequencies("tags")
         test_assertions(map_reduce)
 
         # Check that normalization works
@@ -1973,9 +1874,7 @@ class QuerySetTest(unittest.TestCase):
             self.assertAlmostEqual(f['watch'], 2.0/8.0)
             self.assertAlmostEqual(f['film'], 1.0/8.0)
 
-        exec_js = BlogPost.objects.item_frequencies('tags', normalize=True)
-        map_reduce = BlogPost.objects.item_frequencies('tags', normalize=True, map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = BlogPost.objects.item_frequencies("tags", normalize=True)
         test_assertions(map_reduce)
 
         # Check item_frequencies works for non-list fields
@@ -1984,9 +1883,7 @@ class QuerySetTest(unittest.TestCase):
             self.assertEqual(f[1], 1)
             self.assertEqual(f[2], 2)
 
-        exec_js = BlogPost.objects.item_frequencies('hits')
-        map_reduce = BlogPost.objects.item_frequencies('hits', map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = BlogPost.objects.item_frequencies("hits")
         test_assertions(map_reduce)
 
         BlogPost.drop_collection()
@@ -2022,9 +1919,7 @@ class QuerySetTest(unittest.TestCase):
             self.assertEqual(f['62-3331-1656'], 2)
             self.assertEqual(f['62-3332-1656'], 1)
 
-        exec_js = Person.objects.item_frequencies('phone.number')
-        map_reduce = Person.objects.item_frequencies('phone.number', map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = Person.objects.item_frequencies("phone.number")
         test_assertions(map_reduce)
 
         # Ensure query is taken into account
@@ -2033,9 +1928,9 @@ class QuerySetTest(unittest.TestCase):
             self.assertEqual(set(['62-3331-1656']), set(f.keys()))
             self.assertEqual(f['62-3331-1656'], 2)
 
-        exec_js = Person.objects(phone__number='62-3331-1656').item_frequencies('phone.number')
-        map_reduce = Person.objects(phone__number='62-3331-1656').item_frequencies('phone.number', map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = Person.objects(phone__number="62-3331-1656").item_frequencies(
+            "phone.number"
+        )
         test_assertions(map_reduce)
 
         # Check that normalization works
@@ -2043,9 +1938,7 @@ class QuerySetTest(unittest.TestCase):
             self.assertEqual(f['62-3331-1656'], 2.0/3.0)
             self.assertEqual(f['62-3332-1656'], 1.0/3.0)
 
-        exec_js = Person.objects.item_frequencies('phone.number', normalize=True)
-        map_reduce = Person.objects.item_frequencies('phone.number', normalize=True, map_reduce=True)
-        test_assertions(exec_js)
+        map_reduce = Person.objects.item_frequencies("phone.number", normalize=True)
         test_assertions(map_reduce)
 
     def test_item_frequencies_null_values(self):
@@ -2064,9 +1957,9 @@ class QuerySetTest(unittest.TestCase):
         freq = Person.objects.item_frequencies('city', normalize=True)
         self.assertEqual(freq, {'CRB': 0.5, None: 0.5})
 
-        freq = Person.objects.item_frequencies('city', map_reduce=True)
+        freq = Person.objects.item_frequencies("city")
         self.assertEqual(freq, {'CRB': 1.0, None: 1.0})
-        freq = Person.objects.item_frequencies('city', normalize=True, map_reduce=True)
+        freq = Person.objects.item_frequencies("city", normalize=True)
         self.assertEqual(freq, {'CRB': 0.5, None: 0.5})
 
     def test_item_frequencies_with_null_embedded(self):
@@ -2091,10 +1984,10 @@ class QuerySetTest(unittest.TestCase):
         p.extra = Extra(tag="friend")
         p.save()
 
-        ot = Person.objects.item_frequencies('extra.tag', map_reduce=False)
+        ot = Person.objects.item_frequencies("extra.tag")
         self.assertEqual(ot, {None: 1.0, 'friend': 1.0})
 
-        ot = Person.objects.item_frequencies('extra.tag', map_reduce=True)
+        ot = Person.objects.item_frequencies("extra.tag")
         self.assertEqual(ot, {None: 1.0, 'friend': 1.0})
 
     def test_item_frequencies_with_0_values(self):
@@ -2106,9 +1999,9 @@ class QuerySetTest(unittest.TestCase):
         t.val = 0
         t.save()
 
-        ot = Test.objects.item_frequencies('val', map_reduce=True)
+        ot = Test.objects.item_frequencies("val")
         self.assertEqual(ot, {0: 1})
-        ot = Test.objects.item_frequencies('val', map_reduce=False)
+        ot = Test.objects.item_frequencies("val")
         self.assertEqual(ot, {0: 1})
 
     def test_item_frequencies_with_False_values(self):
@@ -2120,9 +2013,9 @@ class QuerySetTest(unittest.TestCase):
         t.val = False
         t.save()
 
-        ot = Test.objects.item_frequencies('val', map_reduce=True)
+        ot = Test.objects.item_frequencies("val")
         self.assertEqual(ot, {False: 1})
-        ot = Test.objects.item_frequencies('val', map_reduce=False)
+        ot = Test.objects.item_frequencies("val")
         self.assertEqual(ot, {False: 1})
 
     def test_item_frequencies_normalize(self):
@@ -2137,10 +2030,10 @@ class QuerySetTest(unittest.TestCase):
         for i in range(20):
             Test(val=2).save()
 
-        freqs = Test.objects.item_frequencies('val', map_reduce=False, normalize=True)
+        freqs = Test.objects.item_frequencies("val", normalize=True)
         self.assertEqual(freqs, {1: 50.0/70, 2: 20.0/70})
 
-        freqs = Test.objects.item_frequencies('val', map_reduce=True, normalize=True)
+        freqs = Test.objects.item_frequencies("val", normalize=True)
         self.assertEqual(freqs, {1: 50.0/70, 2: 20.0/70})
 
     def test_average(self):

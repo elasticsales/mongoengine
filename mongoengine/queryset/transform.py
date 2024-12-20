@@ -230,6 +230,23 @@ def update(_doc_cls=None, **update):
                 value = {key: value}
         elif op == 'addToSet' and isinstance(value, list):
             value = {key: {"$each": value}}
+        elif op in ("push", "pushAll"):
+            if parts[-1].isdigit():
+                key = ".".join(parts[0:-1])
+                position = int(parts[-1])
+                # $position expects an iterable. If pushing a single value,
+                # wrap it in a list.
+                if not isinstance(value, (set, tuple, list)):
+                    value = [value]
+                value = {key: {"$each": value, "$position": position}}
+            else:
+                if op == "pushAll":
+                    op = "push"  # convert to non-deprecated keyword
+                    if not isinstance(value, (set, tuple, list)):
+                        value = [value]
+                    value = {key: {"$each": value}}
+                else:
+                    value = {key: value}
         else:
             value = {key: value}
         key = '$' + op

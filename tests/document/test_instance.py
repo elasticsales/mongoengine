@@ -1,25 +1,30 @@
 # -*- coding: utf-8 -*-
 import sys
+
 sys.path[0:0] = [""]
 
-import bson
 import os
 import pickle
 import unittest
 import uuid
-
 from datetime import datetime
+
+import bson
 from bson import DBRef
-from tests.fixtures import PickleEmbedded, PickleTest, PickleSignalsTest
 
 from mongoengine import *
-from mongoengine.errors import (NotRegistered, InvalidDocumentError,
-                                InvalidQueryError, DoesNotExist)
-from mongoengine.queryset import NULLIFY, Q
-from mongoengine.connection import get_db
-from mongoengine.base import get_document
-from mongoengine.context_managers import switch_db, query_counter
 from mongoengine import signals
+from mongoengine.base import get_document
+from mongoengine.connection import get_db
+from mongoengine.context_managers import query_counter, switch_db
+from mongoengine.errors import (
+    DoesNotExist,
+    InvalidDocumentError,
+    InvalidQueryError,
+    NotRegistered,
+)
+from mongoengine.queryset import NULLIFY, Q
+from tests.fixtures import PickleEmbedded, PickleSignalsTest, PickleTest
 
 TEST_IMAGE_PATH = os.path.join(os.path.dirname(__file__),
                                '../fields/mongoengine.png')
@@ -383,8 +388,7 @@ class InstanceTest(unittest.TestCase):
                 'ns': 'mongoenginetest.animal'
             })
             self.assertEqual(
-                set(query_op['query']['filter'].keys()),
-                set(['_id', 'superphylum'])
+                set(query_op["command"]["filter"].keys()), set(["_id", "superphylum"])
             )
 
         Animal.drop_collection()
@@ -407,10 +411,11 @@ class InstanceTest(unittest.TestCase):
             doc.save()
             query_op = q.db.system.profile.find({ 'ns': 'mongoenginetest.animal' })[0]
             self.assertEqual(query_op['op'], 'update')
-            self.assertEqual(set(query_op['query'].keys()), set(['_id', 'is_mammal']))
+            self.assertEqual(
+                set(query_op["command"]["q"].keys()), set(["_id", "is_mammal"])
+            )
 
         Animal.drop_collection()
-
 
     def test_reload_referencing(self):
         """Ensures reloading updates weakrefs correctly
@@ -1104,9 +1109,9 @@ class InstanceTest(unittest.TestCase):
         user = User.objects.first()
         # Even if stored as ObjectId's internally mongoengine uses DBRefs
         # As ObjectId's aren't automatically derefenced
-        #self.assertTrue(isinstance(user._data['orgs'][0], DBRef))
+        # self.assertTrue(isinstance(user._data['orgs'][0], DBRef))
         self.assertTrue(isinstance(user.orgs[0], Organization))
-        #self.assertTrue(isinstance(user._data['orgs'][0], Organization))
+        # self.assertTrue(isinstance(user._data['orgs'][0], Organization))
 
         # Changing a value
         with query_counter() as q:
@@ -1484,7 +1489,7 @@ class InstanceTest(unittest.TestCase):
         post_obj = BlogPost.objects.first()
 
         # Test laziness
-        #self.assertTrue(isinstance(post_obj._data['author'],
+        # self.assertTrue(isinstance(post_obj._data['author'],
         #                           bson.DBRef))
         self.assertTrue(isinstance(post_obj.author, self.Person))
         self.assertEqual(post_obj.author.name, 'Test User')
