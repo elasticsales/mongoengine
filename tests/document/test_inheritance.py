@@ -1,17 +1,20 @@
 # -*- coding: utf-8 -*-
 import sys
+
 sys.path[0:0] = [""]
 import unittest
 import warnings
-
 from datetime import datetime
-
-from tests.fixtures import Base
 
 from mongoengine import Document, EmbeddedDocument, connect
 from mongoengine.connection import get_db
-from mongoengine.fields import (BooleanField, GenericReferenceField,
-                                IntField, StringField)
+from mongoengine.fields import (
+    BooleanField,
+    GenericReferenceField,
+    IntField,
+    StringField,
+)
+from tests.fixtures import Base
 
 __all__ = ('InheritanceTest', )
 
@@ -23,7 +26,7 @@ class InheritanceTest(unittest.TestCase):
         self.db = get_db()
 
     def tearDown(self):
-        for collection in self.db.collection_names():
+        for collection in self.db.list_collection_names():
             if 'system.' in collection:
                 continue
             self.db.drop_collection(collection)

@@ -1,18 +1,23 @@
-import pymongo
 import re
 
+import pymongo
 from bson.dbref import DBRef
+
 from mongoengine import signals
-from mongoengine.common import _import_class
-from mongoengine.base import (DocumentMetaclass, TopLevelDocumentMetaclass,
-                              BaseDocument, get_document, ALLOW_INHERITANCE,
-                              AUTO_CREATE_INDEX)
+from mongoengine.base import (
+    ALLOW_INHERITANCE,
+    AUTO_CREATE_INDEX,
+    BaseDocument,
+    DocumentMetaclass,
+    TopLevelDocumentMetaclass,
+    get_document,
+)
 from mongoengine.base.datastructures import WeakInstanceMixin
-from mongoengine.errors import (InvalidQueryError, InvalidDocumentError)
-from mongoengine.queryset import OperationError, NotUniqueError, QuerySet, DoesNotExist
-from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
-from mongoengine.context_managers import (set_write_concern, switch_db,
-                                          switch_collection)
+from mongoengine.common import _import_class
+from mongoengine.connection import DEFAULT_CONNECTION_NAME, get_db
+from mongoengine.context_managers import set_write_concern, switch_collection, switch_db
+from mongoengine.errors import InvalidDocumentError, InvalidQueryError
+from mongoengine.queryset import DoesNotExist, NotUniqueError, OperationError, QuerySet
 
 __all__ = ('Document', 'EmbeddedDocument', 'DynamicDocument',
            'DynamicEmbeddedDocument', 'OperationError',
@@ -147,7 +152,7 @@ class Document(BaseDocument, metaclass=TopLevelDocumentMetaclass):
                 max_size = cls._meta['max_size'] or 10000000  # 10MB default
                 max_documents = cls._meta['max_documents']
 
-                if collection_name in db.collection_names():
+                if collection_name in db.list_collection_names():
                     cls._collection = db[collection_name]
                     # The collection already exists, check if its capped
                     # options match the specified capped options
@@ -442,7 +447,7 @@ class Document(BaseDocument, metaclass=TopLevelDocumentMetaclass):
         self._get_collection = lambda: collection
         self._get_db = lambda: db
         self._collection = collection
-        #self._created = True
+        # self._created = True
         self.__objects = self._qs
         self.__objects._collection_obj = collection
         return self
@@ -467,7 +472,7 @@ class Document(BaseDocument, metaclass=TopLevelDocumentMetaclass):
             collection = cls._get_collection()
         self._get_collection = lambda: collection
         self._collection = collection
-        #self._created = True
+        # self._created = True
         self.__objects = self._qs
         self.__objects._collection_obj = collection
         return self

@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-import unittest
 import sys
+import unittest
+
 sys.path[0:0] = [""]
 
 import os
-import pymongo
-
-from nose.plugins.skip import SkipTest
 from datetime import datetime
 
-from mongoengine import *
-from mongoengine.connection import get_db, get_connection
+import pymongo
+from nose.plugins.skip import SkipTest
 from pymongo.errors import OperationFailure
+
+from mongoengine import *
+from mongoengine.connection import get_connection, get_db
 
 __all__ = ("IndexesTest", )
 
@@ -33,7 +34,7 @@ class IndexesTest(unittest.TestCase):
         self.Person = Person
 
     def tearDown(self):
-        for collection in self.db.collection_names():
+        for collection in self.db.list_collection_names():
             if 'system.' in collection:
                 continue
             self.db.drop_collection(collection)

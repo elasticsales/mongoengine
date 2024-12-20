@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+
 sys.path[0:0] = [""]
 import unittest
 
@@ -26,7 +27,7 @@ class DeltaTest(unittest.TestCase):
         self.Person = Person
 
     def tearDown(self):
-        for collection in self.db.collection_names():
+        for collection in self.db.list_collection_names():
             if 'system.' in collection:
                 continue
             self.db.drop_collection(collection)
@@ -416,7 +417,7 @@ class DeltaTest(unittest.TestCase):
         doc.dict_field = {'hello': 'world'}
         doc.list_field = ['1', 2, {'hello': 'world'}]
         doc.save()
-        #doc = doc.reload(10)
+        # doc = doc.reload(10)
         doc = doc.reload()
 
         self.assertEqual(doc.string_field, 'hello')
