@@ -45,7 +45,7 @@ print('ALL POSTS')
 print()
 for post in Post.objects:
     print(post.title)
-    print('=' * post.title.count())
+    print('=' * post.title.count_documents())
 
     if isinstance(post, TextPost):
         print(post.content)
