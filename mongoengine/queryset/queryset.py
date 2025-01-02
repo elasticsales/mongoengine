@@ -6,7 +6,7 @@ import re
 import warnings
 
 import pymongo
-from bson import json_util
+from bson import SON, json_util
 from bson.code import Code
 from pymongo.collection import ReturnDocument
 from pymongo.common import validate_read_preference
@@ -14,6 +14,7 @@ from pymongo.read_concern import ReadConcern
 
 from mongoengine import signals
 from mongoengine.common import _import_class
+from mongoengine.connection import get_db
 from mongoengine.context_managers import set_read_write_concern, set_write_concern
 from mongoengine.errors import InvalidQueryError, NotUniqueError, OperationError
 from mongoengine.queryset import transform
@@ -1080,14 +1081,14 @@ class QuerySet(object):
         if isinstance(map_f, Code):
             map_f_scope = map_f.scope
             map_f = str(map_f)
-        map_f = Code(queryset._sub_js_fields(map_f), map_f_scope)
+        map_f = Code(queryset._sub_js_fields(map_f), map_f_scope or None)
 
         reduce_f_scope = {}
         if isinstance(reduce_f, Code):
             reduce_f_scope = reduce_f.scope
             reduce_f = str(reduce_f)
         reduce_f_code = queryset._sub_js_fields(reduce_f)
-        reduce_f = Code(reduce_f_code, reduce_f_scope)
+        reduce_f = Code(reduce_f_code, reduce_f_scope or None)
 
         mr_args = {'query': queryset._query}
 
@@ -1097,7 +1098,7 @@ class QuerySet(object):
                 finalize_f_scope = finalize_f.scope
                 finalize_f = str(finalize_f)
             finalize_f_code = queryset._sub_js_fields(finalize_f)
-            finalize_f = Code(finalize_f_code, finalize_f_scope)
+            finalize_f = Code(finalize_f_code, finalize_f_scope or None)
             mr_args['finalize'] = finalize_f
 
         if scope:
@@ -1107,16 +1108,57 @@ class QuerySet(object):
             mr_args['limit'] = limit
 
         if output == 'inline' and not queryset._ordering:
-            map_reduce_function = 'inline_map_reduce'
+            inline = True
+            mr_args['out'] = {'inline': 1}
         else:
-            map_reduce_function = 'map_reduce'
-            mr_args['out'] = output
+            inline = False
+            if isinstance(output, str):
+                mr_args['out'] = output
 
-        results = getattr(queryset._collection, map_reduce_function)(
-                          map_f, reduce_f, **mr_args)
+            elif isinstance(output, dict):
+                ordered_output = []
 
-        if map_reduce_function == 'map_reduce':
-            results = results.find()
+                for part in ('replace', 'merge', 'reduce'):
+                    value = output.get(part)
+                    if value:
+                        ordered_output.append((part, value))
+                        break
+
+                else:
+                    raise OperationError('actionData not specified for output')
+
+                db_alias = output.get('db_alias')
+                remaing_args = ['db', 'sharded', 'nonAtomic']
+
+                if db_alias:
+                    ordered_output.append(('db', get_db(db_alias).name))
+                    del remaing_args[0]
+
+                for part in remaing_args:
+                    value = output.get(part)
+                    if value:
+                        ordered_output.append((part, value))
+
+                mr_args['out'] = SON(ordered_output)
+
+        db = queryset._document._get_db()
+        result = db.command(
+            {
+                'mapReduce': queryset._document._get_collection_name(),
+                'map': map_f,
+                'reduce': reduce_f,
+                **mr_args,
+            }
+        )
+
+        if inline:
+            results = result['results']
+        else:
+            if isinstance(result['result'], str):
+                results = db[result['result']].find()
+            else:
+                info = result['result']
+                results = db.client[info['db']][info['collection']].find()
 
         if queryset._ordering:
             results = results.sort(queryset._ordering)
@@ -1167,7 +1209,7 @@ class QuerySet(object):
         code = Code(code, scope=scope)
 
         db = queryset._document._get_db()
-        return db.eval(code, *fields)
+        return db.command("eval", code, args=fields).get("retval")
 
     def where(self, where_clause):
         """Filter ``QuerySet`` results with a ``$where`` clause (a Javascript

@@ -230,8 +230,14 @@ def update(_doc_cls=None, **update):
                 value = {key: value}
         elif op == 'addToSet' and isinstance(value, list):
             value = {key: {"$each": value}}
+        elif op == "pushAll":
+            op = 'push'  # convert to non-deprecated keyword
+            if not isinstance(value, (set, tuple, list)):
+                value = [value]
+            value = {key: {'$each': value}}
         else:
             value = {key: value}
+
         key = '$' + op
 
         if key not in mongo_update:
