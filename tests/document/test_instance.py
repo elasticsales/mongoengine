@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
+
+from mongoengine.mongodb_support import MONGODB_34, get_mongodb_version
 sys.path[0:0] = [""]
 
 import bson
@@ -382,10 +384,9 @@ class InstanceTest(unittest.TestCase):
             query_op = q.db.system.profile.find_one({
                 'ns': 'mongoenginetest.animal'
             })
-            self.assertEqual(
-                set(query_op['query']['filter'].keys()),
-                set(['_id', 'superphylum'])
-            )
+            # MongoDB 5.0+ uses 'command' instead of 'query'
+            cmd_query = query_op.get('command') or query_op.get('query') 
+            assert set(cmd_query['filter'].keys()) == {'_id', 'superphylum'}
 
         Animal.drop_collection()
 
@@ -402,13 +403,18 @@ class InstanceTest(unittest.TestCase):
         doc = Animal(is_mammal=True, name='Dog')
         doc.save()
 
+        mongo_db = get_mongodb_version()
+
         with query_counter() as q:
             doc.name = 'Cat'
             doc.save()
             query_op = q.db.system.profile.find({ 'ns': 'mongoenginetest.animal' })[0]
-            self.assertEqual(query_op['op'], 'update')
-            self.assertEqual(set(query_op['query'].keys()), set(['_id', 'is_mammal']))
+            # MongoDB 5.0+ uses 'command' instead of 'query'
 
+            if mongo_db <= MONGODB_34:
+                assert set(query_op['query'].keys()) == {'_id', 'is_mammal'}, str(cmd_query)
+            else:
+                assert set(query_op['command']['q'].keys()) == {'_id', 'is_mammal'}, str(cmd_query)
         Animal.drop_collection()
 
 
