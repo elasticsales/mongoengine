@@ -9,6 +9,7 @@ workflows:
       - test-3.10-mongo5
       - test-3.11-mongo3
       - test-3.11-mongo5
+      - test-3.12-mongo5
 defaults: &defaults
   working_directory: ~/code
   steps:
@@ -46,6 +47,11 @@ jobs:
       - image: cimg/python:3.11
       - image: mongo:3.2.19
   test-3.11-mongo5:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.11
+      - image: mongo:5.0.23
+  test-3.12-mongo5:
     <<: *defaults
     docker:
       - image: cimg/python:3.11
