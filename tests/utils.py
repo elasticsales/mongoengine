@@ -41,6 +41,19 @@ def requires_mongodb_gte_60(func):
 def requires_mongodb_gte_70(func):
     return _decorated_with_ver_requirement(func, (7, 0), oper=operator.ge)
 
+try:
+    from PIL import Image as _
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
+def requires_pil(func):
+    @functools.wraps(func)
+    def _inner(*args, **kwargs):
+        if HAS_PIL:
+            return func(*args, **kwargs)
+        else:
+            pytest.skip("PIL not installed")
 
 def _decorated_with_ver_requirement(func, mongo_version_req, oper):
     """Return a MongoDB version requirement decorator.
