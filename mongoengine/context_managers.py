@@ -175,14 +175,14 @@ class query_counter(object):
 
     def __enter__(self):
         """ On every with block we need to drop the profile collection. """
-        self.db.set_profiling_level(0)
+        self.db.command({"profile": 0})
         self.db.system.profile.drop()
-        self.db.set_profiling_level(2)
+        self.db.command({"profile": 2})
         return self
 
     def __exit__(self, t, value, traceback):
         """ Reset the profiling level. """
-        self.db.set_profiling_level(0)
+        self.db.command({"profile": 0})
 
     def __eq__(self, value):
         """ == Compare querycounter. """
