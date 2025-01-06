@@ -22,6 +22,7 @@ from mongoengine.connection import get_db
 from mongoengine.base import get_document
 from mongoengine.context_managers import switch_db, query_counter
 from mongoengine import signals
+from mongoengine.pymongo_support import list_collection_names
 
 TEST_IMAGE_PATH = os.path.join(os.path.dirname(__file__),
                                '../fields/mongoengine.png')
@@ -46,9 +47,7 @@ class InstanceTest(unittest.TestCase):
         self.Person = Person
 
     def tearDown(self):
-        for collection in self.db.collection_names():
-            if 'system.' in collection:
-                continue
+        for collection in list_collection_names(self.db):
             self.db.drop_collection(collection)
 
     def test_capped_collection(self):

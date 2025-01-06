@@ -12,6 +12,7 @@ from datetime import datetime
 from mongoengine import *
 from mongoengine.connection import get_db, get_connection
 from pymongo.errors import OperationFailure
+from mongoengine.pymongo_support import list_collection_names
 
 __all__ = ("IndexesTest", )
 
@@ -33,9 +34,7 @@ class IndexesTest(unittest.TestCase):
         self.Person = Person
 
     def tearDown(self):
-        for collection in self.db.collection_names():
-            if 'system.' in collection:
-                continue
+        for collection in list_collection_names(self.db):
             self.db.drop_collection(collection)
 
     def test_indexes_document(self):
