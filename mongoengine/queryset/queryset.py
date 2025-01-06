@@ -17,6 +17,7 @@ from mongoengine.common import _import_class
 from mongoengine.connection import get_db
 from mongoengine.context_managers import set_read_write_concern, set_write_concern
 from mongoengine.errors import InvalidQueryError, NotUniqueError, OperationError
+from mongoengine.pymongo_support import LEGACY_JSON_OPTIONS
 from mongoengine.queryset import transform
 from mongoengine.queryset.field_list import QueryFieldList
 from mongoengine.queryset.visitor import Q, QNode
@@ -1042,9 +1043,20 @@ class QuerySet(object):
 
     # JSON Helpers
 
-    def to_json(self):
+    def to_json(self, *args, **kwargs):
         """Converts a queryset to JSON"""
-        return json_util.dumps(self.as_pymongo())
+        if "json_options" not in kwargs:
+            warnings.warn(
+                "No 'json_options' are specified! Falling back to "
+                "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
+                "For use with other MongoDB drivers specify the UUID "
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs["json_options"] = LEGACY_JSON_OPTIONS
+        return json_util.dumps(self.as_pymongo(), *args, **kwargs)
 
     def from_json(self, json_data):
         """Converts json data to unsaved objects"""

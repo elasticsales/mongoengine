@@ -3,8 +3,18 @@ Helper functions, constants, and types to aid with PyMongo support.
 """
 
 import pymongo
+from bson import binary, json_util
 
 PYMONGO_VERSION = tuple(pymongo.version_tuple[:2])
+
+# This will be changed to UuidRepresentation.UNSPECIFIED in a future
+# (breaking) release.
+if PYMONGO_VERSION >= (4,):
+    LEGACY_JSON_OPTIONS = json_util.LEGACY_JSON_OPTIONS.with_options(
+        uuid_representation=binary.UuidRepresentation.PYTHON_LEGACY,
+    )
+else:
+    LEGACY_JSON_OPTIONS = json_util.DEFAULT_JSON_OPTIONS
 
 
 def list_collection_names(db, include_system_collections=False):
