@@ -170,10 +170,6 @@ def get_db(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
         conn = get_connection(alias)
         conn_settings = _connection_settings[alias]
         db = conn[conn_settings['name']]
-        # Authenticate if necessary
-        if conn_settings['username'] and conn_settings['password']:
-            db.authenticate(conn_settings['username'],
-                            conn_settings['password'])
         _dbs[alias] = db
     return _dbs[alias]
 
