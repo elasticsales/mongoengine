@@ -1,6 +1,5 @@
 import pymongo
-from pymongo import (MongoClient, MongoReplicaSetClient, ReadPreference,
-                     uri_parser)
+from pymongo import MongoClient, ReadPreference, uri_parser
 
 __all__ = [
     'DEFAULT_CONNECTION_NAME',
