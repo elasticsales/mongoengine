@@ -9,6 +9,17 @@ workflows:
       - test-3.10-mongo5
       - test-3.11-mongo3
       - test-3.11-mongo5
+      - test-3.11-mongo6
+      - test-3.11-mongo7
+      - test-3.12-mongo3
+      - test-3.12-mongo5
+      - test-3.12-mongo6
+      - test-3.12-mongo7
+      - test-3.13-mongo3
+      - test-3.13-mongo5
+      - test-3.13-mongo6
+      - test-3.13-mongo7
+
 defaults: &defaults
   working_directory: ~/code
   steps:
@@ -50,3 +61,53 @@ jobs:
     docker:
       - image: cimg/python:3.11
       - image: mongo:5.0.23
+  test-3.11-mongo6:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.11
+      - image: mongo:6.0.19
+  test-3.11-mongo7:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.11
+      - image: mongo:7.0.16
+  test-3.12-mongo3:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.12
+      - image: mongo:3.6.23
+  test-3.12-mongo5:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.12
+      - image: mongo:5.0.23
+  test-3.12-mongo6:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.12
+      - image: mongo:6.0.19
+  test-3.12-mongo7:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.12
+      - image: mongo:7.0.16
+  test-3.13-mongo3:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.13
+      - image: mongo:3.6.23
+  test-3.13-mongo5:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.13
+      - image: mongo:5.0.23
+  test-3.13-mongo6:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.13
+      - image: mongo:6.0.19
+  test-3.13-mongo7:
+    <<: *defaults
+    docker:
+      - image: cimg/python:3.13
+      - image: mongo:7.0.16
