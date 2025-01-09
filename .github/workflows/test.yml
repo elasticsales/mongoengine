@@ -1,0 +1,46 @@
+name: Test
+'on':
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+  workflow_dispatch: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+        - '3.11'
+        - '3.12'
+        - '3.13'
+        mongodb-version:
+        - 5.0.30
+        - 6.0.19
+        - 7.0.16
+        pymongo-version:
+        - 3.13.0
+        - 4.2.0
+        - 4.6.3
+        - 4.10.1
+    services:
+      mongodb:
+        image: mongo:${{ matrix.mongodb-version }}
+        ports:
+        - 27017:27017
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: 'python -m pip install --upgrade pip
+
+        pip install "pymongo==${{ matrix.pymongo-version }}"
+
+        pip install -r test-requirements.txt'
+    - name: Run tests
+      run: pytest tests/
