@@ -1,13 +1,13 @@
 import sys
-
 sys.path[0:0] = [""]
 
+import pytest
 import unittest
 import uuid
 from datetime import datetime, timedelta
 
 import pymongo
-from bson import ObjectId
+from bson import DBRef, ObjectId
 from pymongo.errors import ConfigurationError
 from pymongo.read_concern import ReadConcern
 from pymongo.read_preferences import ReadPreference
@@ -145,6 +145,165 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual("[<Person: Person object>, <Person: Person object>]",  "%s" % self.Person.objects[1:3])
         self.assertEqual("[<Person: Person object>, <Person: Person object>]",  "%s" % self.Person.objects[51:53])
 
+    def test_slicing_sets_empty_limit_skip(self):
+        self.Person.objects.insert(
+            [self.Person(name=f"User {i}", age=i) for i in range(5)],
+            load_bulk=False,
+        )
+
+        self.Person.objects.create(name="User B", age=30)
+        self.Person.objects.create(name="User C", age=40)
+
+        qs = self.Person.objects()[1:2]
+        assert (qs._empty, qs._skip, qs._limit) == (False, 1, 1)
+        assert len(list(qs)) == 1
+
+        # Test edge case of [1:1] which should return nothing
+        # and require a hack so that it doesn't clash with limit(0)
+        qs = self.Person.objects()[1:1]
+        assert (qs._empty, qs._skip, qs._limit) == (True, 1, 0)
+        assert len(list(qs)) == 0
+
+        qs2 = qs[1:5]  # Make sure that further slicing resets _empty
+        assert (qs2._empty, qs2._skip, qs2._limit) == (False, 1, 4)
+        assert len(list(qs2)) == 4
+
+    def test_limit_0_returns_all_documents(self):
+        self.Person.objects.create(name="User A", age=20)
+        self.Person.objects.create(name="User B", age=30)
+
+        n_docs = self.Person.objects().count()
+
+        persons = list(self.Person.objects().limit(0))
+        assert len(persons) == 1
+        assert n_docs == 2
+
+    def test_limit(self):
+        """Ensure that QuerySet.limit works as expected."""
+        user_a = self.Person.objects.create(name="User A", age=20)
+        _ = self.Person.objects.create(name="User B", age=30)
+
+        # Test limit on a new queryset
+        people = list(self.Person.objects.limit(1))
+        assert len(people) == 1
+        assert people[0] == user_a
+
+        # Test limit on an existing queryset
+        people = self.Person.objects
+        assert len(people) == 2
+        people2 = people.limit(1)
+        assert len(people) == 2
+        assert len(people2) == 1
+        assert people2[0] == user_a
+
+        # Test limit with 0 as parameter
+        people = self.Person.objects.limit(0)
+        assert people.count(with_limit_and_skip=True) == 1
+        assert len(people) == 1
+
+        # Test chaining of only after limit
+        person = self.Person.objects().limit(1).only("name").first()
+        assert person == user_a
+        assert person.name == "User A"
+        assert person.age is None
+
+    def test_skip(self):
+        """Ensure that QuerySet.skip works as expected."""
+        user_a = self.Person.objects.create(name="User A", age=20)
+        user_b = self.Person.objects.create(name="User B", age=30)
+
+        # Test skip on a new queryset
+        people = list(self.Person.objects.skip(0))
+        assert len(people) == 2
+        assert people[0] == user_a
+        assert people[1] == user_b
+
+        people = list(self.Person.objects.skip(1))
+        assert len(people) == 1
+        assert people[0] == user_b
+
+        # Test skip on an existing queryset
+        people = self.Person.objects
+        assert len(people) == 2
+        people2 = people.skip(1)
+        assert len(people) == 2
+        assert len(people2) == 1
+        assert people2[0] == user_b
+
+        # Test chaining of only after skip
+        person = self.Person.objects().skip(1).only("name").first()
+        assert person == user_b
+        assert person.name == "User B"
+        assert person.age is None
+
+    def test___getitem___invalid_index(self):
+        """Ensure slicing a queryset works as expected."""
+        with pytest.raises(AttributeError):
+            self.Person.objects()["a"]
+
+    def test_slice(self):
+        """Ensure slicing a queryset works as expected."""
+        user_a = self.Person.objects.create(name="User A", age=20)
+        user_b = self.Person.objects.create(name="User B", age=30)
+        user_c = self.Person.objects.create(name="User C", age=40)
+
+        # Test slice limit
+        people = list(self.Person.objects[:2])
+        assert len(people) == 2
+        assert people[0] == user_a
+        assert people[1] == user_b
+
+        # Test slice skip
+        people = list(self.Person.objects[1:])
+        assert len(people) == 2
+        assert people[0] == user_b
+        assert people[1] == user_c
+
+        # Test slice limit and skip
+        people = list(self.Person.objects[1:2])
+        assert len(people) == 1
+        assert people[0] == user_b
+
+        # Test slice limit and skip on an existing queryset
+        people = self.Person.objects
+        assert len(people) == 3
+        people2 = people[1:2]
+        assert len(people2) == 1
+        assert people2[0] == user_b
+
+        # Test slice limit and skip cursor reset
+        qs = self.Person.objects[1:2]
+        # fetch then delete the cursor
+        qs._cursor
+        qs._cursor_obj = None
+        people = list(qs)
+        assert len(people) == 1
+        assert people[0].name == "User B"
+
+        # Test empty slice
+        people = list(self.Person.objects[1:1])
+        assert len(people) == 0
+
+        # Test slice out of range
+        people = list(self.Person.objects[80000:80001])
+        assert len(people) == 0
+
+        # Test larger slice __repr__
+        self.Person.objects.delete()
+        for i in range(55):
+            self.Person(name="A%s" % i, age=i).save()
+
+        assert self.Person.objects.count() == 55
+        assert "Person object" == "%s" % self.Person.objects[0]
+        assert (
+            "[<Person: Person object>, <Person: Person object>]"
+            == "%s" % self.Person.objects[1:3]
+        )
+        assert (
+            "[<Person: Person object>, <Person: Person object>]"
+            == "%s" % self.Person.objects[51:53]
+        )
+
     def test_find_one(self):
         """Ensure that a query using find_one returns a valid result.
         """
@@ -259,6 +418,25 @@ class QuerySetTest(unittest.TestCase):
         self.assertEqual(list(A.objects.none()), [])
         self.assertEqual(list(A.objects.none().all()), [])
         self.assertEqual(A.objects.none().count(), 0)
+
+        # validate collection not empty
+        assert A.objects.count() == 1
+
+        # update operations
+        assert A.objects.none().update(s="1") == 0
+        assert A.objects.none().update_one(s="1") == 0
+        assert A.objects.none().modify(s="1") is None
+
+        # validate noting change by update operations
+        assert A.objects(s="1").count() == 0
+
+        # fetch queries
+        assert A.objects.none().first() is None
+        assert list(A.objects.none()) == []
+        assert list(A.objects.none().all()) == []
+        assert list(A.objects.none().limit(1)) == []
+        assert list(A.objects.none().skip(1)) == []
+        assert list(A.objects.none()[:5]) == []
 
     def test_chaining(self):
         class A(Document):

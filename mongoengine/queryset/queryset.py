@@ -82,6 +82,13 @@ class QuerySet(object):
         self._hint = -1  # Using -1 as None is a valid value for hint
         self._batch_size = None
 
+        # Hack - As people expect cursor[5:5] to return
+        # an empty result set. It's hard to do that right, though, because the
+        # server uses limit(0) to mean 'no limit'. So we set _empty
+        # in that case and check for it when iterating. We also unset
+        # it anytime we change _limit. Inspired by how it is done in pymongo.Cursor
+        self._empty = False
+
     def __call__(self, q_obj=None, class_check=True, slave_okay=False,
                  read_preference=None, **query):
         """Filter the selected documents by calling the
@@ -180,6 +187,7 @@ class QuerySet(object):
         """Support skip and limit using getitem and slicing syntax.
         """
         queryset = self.clone()
+        queryset._empty = False
 
         # Slice provided
         if isinstance(key, slice):
@@ -188,6 +196,8 @@ class QuerySet(object):
                 queryset._skip, queryset._limit = key.start, key.stop
                 if key.start and key.stop:
                     queryset._limit = key.stop - key.start
+                if queryset._limit == 0:
+                    queryset._empty = True
             except IndexError as err:
                 # PyMongo raises an error if key.start == key.stop, catch it,
                 # bin it, kill it.
@@ -197,6 +207,7 @@ class QuerySet(object):
                         queryset.limit(0)
                         queryset._skip = key.start
                         queryset._limit = key.stop - start
+                        queryset._empty = True
                         return queryset
                 raise err
             # Allow further QuerySet modifications to be performed
@@ -322,6 +333,9 @@ class QuerySet(object):
         """Retrieve the first object matching the query.
         """
         queryset = self.clone()
+        if self._none or self._empty:
+            return None
+
         try:
             result = queryset[0]
         except IndexError:
@@ -418,10 +432,14 @@ class QuerySet(object):
             :meth:`skip` that has been applied to this cursor into account when
             getting the count
         """
-        if self._limit == 0:
-            return 0
-
-        if self._none:
+        # mimic the fact that setting .limit(0) in pymongo sets no limit
+        # https://www.mongodb.com/docs/manual/reference/method/cursor.limit/#zero-value
+        if (
+            self._limit == 0
+            and with_limit_and_skip is False
+            or self._none
+            or self._empty
+        ):
             return 0
 
         if with_limit_and_skip and self._len is not None:
@@ -526,6 +544,8 @@ class QuerySet(object):
 
         if write_concern is None:
             write_concern = {}
+        if self._none or self._empty:
+            return 0
 
         queryset = self.clone()
         query = queryset._query
@@ -607,6 +627,9 @@ class QuerySet(object):
         if not update and not upsert and not remove:
             raise OperationError(
                 "No update parameters, must either update or remove")
+
+        if self._none or self._empty:
+            return None
 
         queryset = self.clone()
         query = queryset._query
@@ -770,13 +793,16 @@ class QuerySet(object):
 
         :param n: the maximum number of objects to return
         """
+        # chesterton's fence:
+        if n == 0: n = 1
+
         queryset = self.clone()
-        if n == 0:
-            queryset._cursor.limit(1)
-        else:
-            queryset._cursor.limit(n)
         queryset._limit = n
-        # Return self to allow chaining
+        queryset._empty = False
+
+        if queryset._cursor_obj:
+            queryset._cursor_obj.limit(n)
+
         return queryset
 
     def skip(self, n):
@@ -786,8 +812,11 @@ class QuerySet(object):
         :param n: the number of objects to skip before returning results
         """
         queryset = self.clone()
-        queryset._cursor.skip(n)
         queryset._skip = n
+
+        if queryset._cursor_obj:
+            queryset._cursor_obj.skip(queryset._skip)
+
         return queryset
 
     def hint(self, index=None):
@@ -804,14 +833,22 @@ class QuerySet(object):
         .. versionadded:: 0.5
         """
         queryset = self.clone()
-        queryset._cursor.hint(index)
         queryset._hint = index
+
+        # If a cursor object has already been created, apply the hint to it.
+        if queryset._cursor_obj:
+            queryset._cursor_obj.hint(queryset._hint)
+
         return queryset
 
     def batch_size(self, size):
         queryset = self.clone()
-        queryset._cursor.batch_size(size)
         queryset._batch_size = size
+
+        # If a cursor object has already been created, apply the batch size to it.
+        if queryset._cursor_obj:
+            queryset._cursor_obj.batch_size(queryset._batch_size)
+
         return queryset
 
     def distinct(self, field, dereference=True):
