@@ -13,6 +13,7 @@ from mongoengine import *
 from mongoengine.connection import get_db, get_connection
 from pymongo.errors import OperationFailure
 from mongoengine.pymongo_support import list_collection_names
+from mongoengine.mongodb_support import get_mongodb_version, MONGODB_42
 
 __all__ = ("IndexesTest", )
 
@@ -739,6 +740,47 @@ class IndexesTest(unittest.TestCase):
             }
         })
 
+    def test_covered_index(self):
+        """Ensure that covered indexes can be used"""
+
+        class Test(Document):
+            a = IntField()
+            b = IntField()
+
+            meta = {"indexes": ["a"], "allow_inheritance": False, "auto_create_index": True}
+
+        Test.drop_collection()
+
+        obj = Test(a=1)
+        obj.save()
+
+        # Need to be explicit about covered indexes as mongoDB doesn't know if
+        # the documents returned might have more keys in that here.
+        query_plan = Test.objects(id=obj.id).exclude("a").explain()
+        assert (
+            query_plan["queryPlanner"]["winningPlan"]["inputStage"]["stage"] == "IDHACK"
+        )
+
+        query_plan = Test.objects(id=obj.id).only("id").explain()
+        assert (
+            query_plan["queryPlanner"]["winningPlan"]["inputStage"]["stage"] == "IDHACK"
+        )
+
+        mongo_db = get_mongodb_version()
+        query_plan = Test.objects(a=1).only("a").exclude("id").explain()
+        assert (
+            query_plan["queryPlanner"]["winningPlan"]["inputStage"]["stage"] == "IXSCAN"
+        )
+
+        PROJECTION_STR = "PROJECTION" if mongo_db < MONGODB_42 else "PROJECTION_COVERED"
+        assert query_plan["queryPlanner"]["winningPlan"]["stage"] == PROJECTION_STR
+
+        query_plan = Test.objects(a=1).explain()
+        assert (
+            query_plan["queryPlanner"]["winningPlan"]["inputStage"]["stage"] == "IXSCAN"
+        )
+
+        assert query_plan.get("queryPlanner").get("winningPlan").get("stage") == "FETCH"
 
 if __name__ == '__main__':
     unittest.main()
