@@ -6,7 +6,7 @@ import re
 import warnings
 
 import pymongo
-from bson import json_util
+from bson import SON, json_util
 from bson.code import Code
 from pymongo.collection import ReturnDocument
 from pymongo.common import validate_read_preference
@@ -16,6 +16,7 @@ from mongoengine import signals
 from mongoengine.common import _import_class
 from mongoengine.context_managers import set_read_write_concern, set_write_concern
 from mongoengine.errors import InvalidQueryError, NotUniqueError, OperationError
+from mongoengine.pymongo_support import LEGACY_JSON_OPTIONS
 from mongoengine.queryset import transform
 from mongoengine.queryset.field_list import QueryFieldList
 from mongoengine.queryset.visitor import Q, QNode
@@ -35,6 +36,7 @@ PULL = 4
 
 RE_TYPE = type(re.compile(''))
 
+PYMONGO_VERSION = tuple(pymongo.version_tuple[:2])
 
 class QuerySet(object):
     """A set of results returned from a query. Wraps a MongoDB cursor,
@@ -423,9 +425,27 @@ class QuerySet(object):
 
         if with_limit_and_skip and self._len is not None:
             return self._len
-        count = self._cursor.count(with_limit_and_skip=with_limit_and_skip)
+
+        # TODO: evaluate utility of `estimated_document_count`
+
+        if PYMONGO_VERSION >= (3, 7):
+            options = {}
+
+            if with_limit_and_skip:
+                if self._limit is not None:
+                    options["limit"] = self._limit
+                if self._skip is not None:
+                    options["skip"] = self._skip
+            if self._hint not in (-1, None):
+                options["hint"] = self._hint
+
+            count = self._cursor.collection.count_documents(filter=self._query, **options)
+        else:
+            count = self._cursor.count(with_limit_and_skip=with_limit_and_skip)
+
         if with_limit_and_skip:
             self._len = count
+
         return count
 
     def delete(self, write_concern=None, _from_doc_delete=False):
@@ -1019,9 +1039,20 @@ class QuerySet(object):
 
     # JSON Helpers
 
-    def to_json(self):
+    def to_json(self, *args, **kwargs):
         """Converts a queryset to JSON"""
-        return json_util.dumps(self.as_pymongo())
+        if "json_options" not in kwargs:
+            warnings.warn(
+                "No 'json_options' are specified! Falling back to "
+                "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
+                "For use with other MongoDB drivers specify the UUID "
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs["json_options"] = LEGACY_JSON_OPTIONS
+        return json_util.dumps(self.as_pymongo(), *args, **kwargs)
 
     def from_json(self, json_data):
         """Converts json data to unsaved objects"""

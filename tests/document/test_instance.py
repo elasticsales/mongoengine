@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
+
+from mongoengine.mongodb_support import MONGODB_34, get_mongodb_version
 sys.path[0:0] = [""]
 
 import bson
@@ -20,6 +22,7 @@ from mongoengine.connection import get_db
 from mongoengine.base import get_document
 from mongoengine.context_managers import switch_db, query_counter
 from mongoengine import signals
+from mongoengine.pymongo_support import list_collection_names
 
 TEST_IMAGE_PATH = os.path.join(os.path.dirname(__file__),
                                '../fields/mongoengine.png')
@@ -44,9 +47,7 @@ class InstanceTest(unittest.TestCase):
         self.Person = Person
 
     def tearDown(self):
-        for collection in self.db.collection_names():
-            if 'system.' in collection:
-                continue
+        for collection in list_collection_names(self.db):
             self.db.drop_collection(collection)
 
     def test_capped_collection(self):
@@ -382,10 +383,9 @@ class InstanceTest(unittest.TestCase):
             query_op = q.db.system.profile.find_one({
                 'ns': 'mongoenginetest.animal'
             })
-            self.assertEqual(
-                set(query_op['query']['filter'].keys()),
-                set(['_id', 'superphylum'])
-            )
+            # MongoDB 5.0+ uses 'command' instead of 'query'
+            cmd_query = query_op.get('command') or query_op.get('query')
+            assert set(cmd_query['filter'].keys()) == {'_id', 'superphylum'}
 
         Animal.drop_collection()
 
@@ -402,13 +402,18 @@ class InstanceTest(unittest.TestCase):
         doc = Animal(is_mammal=True, name='Dog')
         doc.save()
 
+        mongo_db = get_mongodb_version()
+
         with query_counter() as q:
             doc.name = 'Cat'
             doc.save()
             query_op = q.db.system.profile.find({ 'ns': 'mongoenginetest.animal' })[0]
-            self.assertEqual(query_op['op'], 'update')
-            self.assertEqual(set(query_op['query'].keys()), set(['_id', 'is_mammal']))
+            # MongoDB 5.0+ uses 'command' instead of 'query'
 
+            if mongo_db <= MONGODB_34:
+                assert set(query_op['query'].keys()) == {'_id', 'is_mammal'}, str(cmd_query)
+            else:
+                assert set(query_op['command']['q'].keys()) == {'_id', 'is_mammal'}, str(cmd_query)
         Animal.drop_collection()
 
 
@@ -1975,16 +1980,16 @@ class InstanceTest(unittest.TestCase):
         person = Person(name="name", age=10, job=job)
 
         from pymongo.collection import Collection
-        orig_update = Collection.update
+        orig_update_one = Collection.update_one
         try:
-            def fake_update(*args, **kwargs):
+            def fake_update_one(*args, **kwargs):
                 self.fail("Unexpected update for %s" % args[0].name)
-                return orig_update(*args, **kwargs)
+                return orig_update_one(*args, **kwargs)
 
-            Collection.update = fake_update
+            Collection.update_one = fake_update_one
             person.save()
         finally:
-            Collection.update = orig_update
+            Collection.update_one = orig_update_one
 
     def test_db_alias_tests(self):
         """ DB Alias tests """

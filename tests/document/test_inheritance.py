@@ -12,6 +12,7 @@ from mongoengine import Document, EmbeddedDocument, connect
 from mongoengine.connection import get_db
 from mongoengine.fields import (BooleanField, GenericReferenceField,
                                 IntField, StringField)
+from mongoengine.pymongo_support import list_collection_names
 
 __all__ = ('InheritanceTest', )
 
@@ -23,9 +24,7 @@ class InheritanceTest(unittest.TestCase):
         self.db = get_db()
 
     def tearDown(self):
-        for collection in self.db.collection_names():
-            if 'system.' in collection:
-                continue
+        for collection in list_collection_names(self.db):
             self.db.drop_collection(collection)
 
     def test_superclasses(self):

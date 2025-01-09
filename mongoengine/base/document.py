@@ -1,4 +1,5 @@
 import operator
+import warnings
 from functools import partial
 
 import pymongo
@@ -13,6 +14,7 @@ from mongoengine.base.proxy import DocumentProxy
 from mongoengine.base.common import get_document, ALLOW_INHERITANCE
 from mongoengine.base.datastructures import BaseDict, BaseList
 from mongoengine.base.fields import ComplexBaseField
+from mongoengine.pymongo_support import LEGACY_JSON_OPTIONS
 
 __all__ = ('BaseDocument', 'NON_FIELD_ERRORS')
 
@@ -193,14 +195,39 @@ class BaseDocument(object):
             message = "ValidationError (%s:%s) " % (self._class_name, pk)
             raise ValidationError(message, errors=errors)
 
-    def to_json(self):
-        """Converts a document to JSON"""
-        return json_util.dumps(self.to_mongo())
+    def to_json(self, json_options=None):
+        """Convert this document to JSON."""
+        if json_options is None:
+            warnings.warn(
+                "No 'json_options' are specified! Falling back to "
+                "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
+                "For use with other MongoDB drivers specify the UUID "
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            json_options = LEGACY_JSON_OPTIONS
+        return json_util.dumps(self.to_mongo(), json_options=json_options)
 
     @classmethod
-    def from_json(cls, json_data):
-        """Converts json data to an unsaved document instance"""
-        return cls._from_son(json_util.loads(json_data))
+    def from_json(cls, json_data, json_options=None):
+        """Converts json data to a Document instance.
+
+        :param str json_data: The json data to load into the Document.
+        """
+        if json_options is None:
+            warnings.warn(
+                "No 'json_options' are specified! Falling back to "
+                "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
+                "For use with other MongoDB drivers specify the UUID "
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            json_options = LEGACY_JSON_OPTIONS
+        return cls._from_son(json_util.loads(json_data, json_options=json_options))
 
     def __expand_dynamic_values(self, name, value):
         """expand any dynamic values to their correct types / values"""

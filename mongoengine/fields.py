@@ -28,6 +28,7 @@ from mongoengine.queryset import DoesNotExist
 from .queryset import DO_NOTHING, QuerySet
 from .document import Document, EmbeddedDocument
 from .connection import get_db, DEFAULT_CONNECTION_NAME
+from pymongo import ReturnDocument
 
 try:
     from PIL import Image, ImageOps
@@ -1464,8 +1465,9 @@ class SequenceField(BaseField):
         self.collection_name = collection_name or self.COLLECTION_NAME
         self.db_alias = db_alias or DEFAULT_CONNECTION_NAME
         self.sequence_name = sequence_name
-        self.value_decorator = (callable(value_decorator) and
-                                value_decorator or self.VALUE_DECORATOR)
+        self.value_decorator = (
+            value_decorator if callable(value_decorator) else self.VALUE_DECORATOR
+        )
         return super(SequenceField, self).__init__(*args, **kwargs)
 
     def generate(self):
@@ -1475,22 +1477,28 @@ class SequenceField(BaseField):
         sequence_name = self.get_sequence_name()
         sequence_id = "%s.%s" % (sequence_name, self.name)
         collection = get_db(alias=self.db_alias)[self.collection_name]
-        counter = collection.find_and_modify(query={"_id": sequence_id},
-                                             update={"$inc": {"next": 1}},
-                                             new=True,
-                                             upsert=True)
-        return self.value_decorator(counter['next'])
+
+        counter = collection.find_one_and_update(
+            filter={"_id": sequence_id},
+            update={"$inc": {"next": 1}},
+            return_document=ReturnDocument.AFTER,
+            upsert=True
+        )
+        return self.value_decorator(counter["next"])
 
     def set_next_value(self, value):
         """Helper method to set the next sequence value"""
         sequence_name = self.get_sequence_name()
         sequence_id = "%s.%s" % (sequence_name, self.name)
         collection = get_db(alias=self.db_alias)[self.collection_name]
-        counter = collection.find_and_modify(query={"_id": sequence_id},
-                                             update={"$set": {"next": value}},
-                                             new=True,
-                                             upsert=True)
-        return self.value_decorator(counter['next'])
+
+        counter = collection.find_one_and_update(
+            filter={"_id": sequence_id},
+            update={"$set": {"next": value}},
+            return_document=ReturnDocument.AFTER,
+            upsert=True
+        )
+        return self.value_decorator(counter["next"])
 
     def get_next_value(self):
         """Helper method to get the next value for previewing.

@@ -13,6 +13,7 @@ from mongoengine.queryset import OperationError, NotUniqueError, QuerySet, DoesN
 from mongoengine.connection import get_db, DEFAULT_CONNECTION_NAME
 from mongoengine.context_managers import (set_write_concern, switch_db,
                                           switch_collection)
+from mongoengine.pymongo_support import list_collection_names
 
 __all__ = ('Document', 'EmbeddedDocument', 'DynamicDocument',
            'DynamicEmbeddedDocument', 'OperationError',
@@ -147,7 +148,9 @@ class Document(BaseDocument, metaclass=TopLevelDocumentMetaclass):
                 max_size = cls._meta['max_size'] or 10000000  # 10MB default
                 max_documents = cls._meta['max_documents']
 
-                if collection_name in db.collection_names():
+                if collection_name in list_collection_names(
+                    db, include_system_collections=True
+                ):
                     cls._collection = db[collection_name]
                     # The collection already exists, check if its capped
                     # options match the specified capped options
