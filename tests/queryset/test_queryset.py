@@ -20,6 +20,12 @@ from mongoengine.python_support import PY3
 from mongoengine.queryset import (DoesNotExist, MultipleObjectsReturned,
                                   QuerySet, QuerySetManager, queryset_manager)
 
+from tests.utils import (
+    requires_mongodb_gte_42,
+    requires_mongodb_gte_44,
+    requires_mongodb_lt_42,
+)
+
 __all__ = ("QuerySetTest",)
 
 
@@ -1048,6 +1054,7 @@ class QuerySetTest(unittest.TestCase):
 
         BlogPost.drop_collection()
 
+    @requires_mongodb_lt_42
     def test_exec_js_query(self):
         """Ensure that queries are properly formed for use in exec_js.
         """
@@ -1085,6 +1092,7 @@ class QuerySetTest(unittest.TestCase):
 
         BlogPost.drop_collection()
 
+    @requires_mongodb_lt_42
     def test_exec_js_field_sub(self):
         """Ensure that field substitutions occur properly in exec_js functions.
         """
@@ -1805,9 +1813,8 @@ class QuerySetTest(unittest.TestCase):
         results = BlogPost.objects.map_reduce(map_f, reduce_f, "myresults")
         results = list(results)
 
-        self.assertEqual(results[0].object, post1)
-        self.assertEqual(results[1].object, post2)
-        self.assertEqual(results[2].object, post3)
+        self.assertEqual({ result.object for result in results },
+                         { post1, post2, post3 })
 
         BlogPost.drop_collection()
 
@@ -2068,6 +2075,7 @@ class QuerySetTest(unittest.TestCase):
         freq = Person.objects.item_frequencies('city', normalize=True, map_reduce=True)
         self.assertEqual(freq, {'CRB': 0.5, None: 0.5})
 
+    @requires_mongodb_lt_42
     def test_item_frequencies_with_null_embedded(self):
         class Data(EmbeddedDocument):
             name = StringField()
@@ -2096,6 +2104,7 @@ class QuerySetTest(unittest.TestCase):
         ot = Person.objects.item_frequencies('extra.tag', map_reduce=True)
         self.assertEqual(ot, {None: 1.0, 'friend': 1.0})
 
+    @requires_mongodb_lt_42
     def test_item_frequencies_with_0_values(self):
         class Test(Document):
             val = IntField()
@@ -2110,6 +2119,7 @@ class QuerySetTest(unittest.TestCase):
         ot = Test.objects.item_frequencies('val', map_reduce=False)
         self.assertEqual(ot, {0: 1})
 
+    @requires_mongodb_lt_42
     def test_item_frequencies_with_False_values(self):
         class Test(Document):
             val = BooleanField()
@@ -2124,6 +2134,7 @@ class QuerySetTest(unittest.TestCase):
         ot = Test.objects.item_frequencies('val', map_reduce=False)
         self.assertEqual(ot, {False: 1})
 
+    @requires_mongodb_lt_42
     def test_item_frequencies_normalize(self):
         class Test(Document):
             val = IntField()
