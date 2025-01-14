@@ -500,7 +500,7 @@ Alternatively, you can rename your collections eg ::
             if old_style_name == new_style_name:
                 continue  # Nothing to do
 
-            existing = db.collection_names()
+            existing = db.list_collection_names()
             if old_style_name in existing:
                 if new_style_name in existing:
                     failure = True
