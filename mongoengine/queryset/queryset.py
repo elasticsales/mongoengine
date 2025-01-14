@@ -49,7 +49,6 @@ class QuerySet(object):
         self._mongo_query = None
         self._query_obj = Q()
         self._initial_query = {}
-        self._where_clause = None
         self._loaded_fields = QueryFieldList()
         self._ordering = None
         self._timeout = True
@@ -716,7 +715,7 @@ class QuerySet(object):
 
         copy_props = (
             '_mongo_query', '_initial_query', '_none', '_query_obj',
-            '_where_clause', '_loaded_fields', '_ordering', '_timeout',
+            '_loaded_fields', '_ordering', '_timeout',
             '_class_check', '_read_preference', '_iter', '_scalar',
             '_as_pymongo', '_as_pymongo_coerce', '_limit', '_skip', '_hint',
             '_batch_size', '_auto_dereference'
@@ -1028,67 +1027,7 @@ class QuerySet(object):
         son_data = json_util.loads(json_data)
         return [self._document._from_son(data) for data in son_data]
 
-    # JS functionality
-
-    def exec_js(self, code, *fields, **options):
-        """Execute a Javascript function on the server. A list of fields may be
-        provided, which will be translated to their correct names and supplied
-        as the arguments to the function. A few extra variables are added to
-        the function's scope: ``collection``, which is the name of the
-        collection in use; ``query``, which is an object representing the
-        current query; and ``options``, which is an object containing any
-        options specified as keyword arguments.
-
-        As fields in MongoEngine may use different names in the database (set
-        using the :attr:`db_field` keyword argument to a :class:`Field`
-        constructor), a mechanism exists for replacing MongoEngine field names
-        with the database field names in Javascript code. When accessing a
-        field, use square-bracket notation, and prefix the MongoEngine field
-        name with a tilde (~).
-
-        :param code: a string of Javascript code to execute
-        :param fields: fields that you will be using in your function, which
-            will be passed in to your function as arguments
-        :param options: options that you want available to the function
-            (accessed in Javascript through the ``options`` object)
-        """
-        queryset = self.clone()
-
-        code = queryset._sub_js_fields(code)
-
-        fields = [queryset._document._translate_field_name(f) for f in fields]
-        collection = queryset._document._get_collection_name()
-
-        scope = {
-            'collection': collection,
-            'options': options or {},
-        }
-
-        query = queryset._query
-        if queryset._where_clause:
-            query['$where'] = queryset._where_clause
-
-        scope['query'] = query
-        code = Code(code, scope=scope)
-
-        db = queryset._document._get_db()
-        return db.eval(code, *fields)
-
-    def where(self, where_clause):
-        """Filter ``QuerySet`` results with a ``$where`` clause (a Javascript
-        expression). Performs automatic field name substitution like
-        :meth:`mongoengine.queryset.Queryset.exec_js`.
-
-        .. note:: When using this mode of query, the database will call your
-                  function, or evaluate your predicate clause, for each object
-                  in the collection.
-
-        .. versionadded:: 0.5
-        """
-        queryset = self.clone()
-        where_clause = queryset._sub_js_fields(where_clause)
-        queryset._where_clause = where_clause
-        return queryset
+    # Basic aggregations
 
     def sum(self, field):
         """Sum over the values of the specified field.
@@ -1179,11 +1118,6 @@ class QuerySet(object):
             else:
                 self._cursor_obj = self._collection.find(self._query,
                                                          **self._cursor_args)
-
-            # Apply "where" clauses to the cursor.
-            if self._where_clause:
-                where_clause = self._sub_js_fields(self._where_clause)
-                self._cursor_obj.where(where_clause)
 
             if self._ordering:
                 # Apply query ordering
