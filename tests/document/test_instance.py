@@ -382,8 +382,9 @@ class InstanceTest(unittest.TestCase):
             query_op = q.db.system.profile.find_one({
                 'ns': 'mongoenginetest.animal'
             })
+            query_command = query_op.get('query') or query_op['command']
             self.assertEqual(
-                set(query_op['query']['filter'].keys()),
+                set(query_command['filter'].keys()),
                 set(['_id', 'superphylum'])
             )
 
@@ -405,9 +406,11 @@ class InstanceTest(unittest.TestCase):
         with query_counter() as q:
             doc.name = 'Cat'
             doc.save()
+
             query_op = q.db.system.profile.find({ 'ns': 'mongoenginetest.animal' })[0]
             self.assertEqual(query_op['op'], 'update')
-            self.assertEqual(set(query_op['query'].keys()), set(['_id', 'is_mammal']))
+            query = query_op.get('query') or query_op['command']['q']
+            self.assertEqual(set(query.keys()), set(['_id', 'is_mammal']))
 
         Animal.drop_collection()
 

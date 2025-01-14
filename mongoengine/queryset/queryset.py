@@ -49,7 +49,6 @@ class QuerySet(object):
         self._mongo_query = None
         self._query_obj = Q()
         self._initial_query = {}
-        self._where_clause = None
         self._loaded_fields = QueryFieldList()
         self._ordering = None
         self._timeout = True
@@ -716,7 +715,7 @@ class QuerySet(object):
 
         copy_props = (
             '_mongo_query', '_initial_query', '_none', '_query_obj',
-            '_where_clause', '_loaded_fields', '_ordering', '_timeout',
+            '_loaded_fields', '_ordering', '_timeout',
             '_class_check', '_read_preference', '_iter', '_scalar',
             '_as_pymongo', '_as_pymongo_coerce', '_limit', '_skip', '_hint',
             '_batch_size', '_auto_dereference'
@@ -1028,162 +1027,7 @@ class QuerySet(object):
         son_data = json_util.loads(json_data)
         return [self._document._from_son(data) for data in son_data]
 
-    # JS functionality
-
-    def map_reduce(self, map_f, reduce_f, output, finalize_f=None, limit=None,
-                   scope=None):
-        """Perform a map/reduce query using the current query spec
-        and ordering. While ``map_reduce`` respects ``QuerySet`` chaining,
-        it must be the last call made, as it does not return a maleable
-        ``QuerySet``.
-
-        See the :meth:`~mongoengine.tests.QuerySetTest.test_map_reduce`
-        and :meth:`~mongoengine.tests.QuerySetTest.test_map_advanced`
-        tests in ``tests.queryset.QuerySetTest`` for usage examples.
-
-        :param map_f: map function, as :class:`~bson.code.Code` or string
-        :param reduce_f: reduce function, as
-                         :class:`~bson.code.Code` or string
-        :param output: output collection name, if set to 'inline' will try to
-           use :class:`~pymongo.collection.Collection.inline_map_reduce`
-           This can also be a dictionary containing output options
-           see: http://docs.mongodb.org/manual/reference/commands/#mapReduce
-        :param finalize_f: finalize function, an optional function that
-                           performs any post-reduction processing.
-        :param scope: values to insert into map/reduce global scope. Optional.
-        :param limit: number of objects from current query to provide
-                      to map/reduce method
-
-        Returns an iterator yielding
-        :class:`~mongoengine.document.MapReduceDocument`.
-
-        .. note::
-
-            Map/Reduce changed in server version **>= 1.7.4**. The PyMongo
-            :meth:`~pymongo.collection.Collection.map_reduce` helper requires
-            PyMongo version **>= 1.11**.
-
-        .. versionchanged:: 0.5
-           - removed ``keep_temp`` keyword argument, which was only relevant
-             for MongoDB server versions older than 1.7.4
-
-        .. versionadded:: 0.3
-        """
-        queryset = self.clone()
-
-        MapReduceDocument = _import_class('MapReduceDocument')
-
-        if not hasattr(self._collection, "map_reduce"):
-            raise NotImplementedError("Requires MongoDB >= 1.7.1")
-
-        map_f_scope = {}
-        if isinstance(map_f, Code):
-            map_f_scope = map_f.scope
-            map_f = str(map_f)
-        map_f = Code(queryset._sub_js_fields(map_f), map_f_scope)
-
-        reduce_f_scope = {}
-        if isinstance(reduce_f, Code):
-            reduce_f_scope = reduce_f.scope
-            reduce_f = str(reduce_f)
-        reduce_f_code = queryset._sub_js_fields(reduce_f)
-        reduce_f = Code(reduce_f_code, reduce_f_scope)
-
-        mr_args = {'query': queryset._query}
-
-        if finalize_f:
-            finalize_f_scope = {}
-            if isinstance(finalize_f, Code):
-                finalize_f_scope = finalize_f.scope
-                finalize_f = str(finalize_f)
-            finalize_f_code = queryset._sub_js_fields(finalize_f)
-            finalize_f = Code(finalize_f_code, finalize_f_scope)
-            mr_args['finalize'] = finalize_f
-
-        if scope:
-            mr_args['scope'] = scope
-
-        if limit:
-            mr_args['limit'] = limit
-
-        if output == 'inline' and not queryset._ordering:
-            map_reduce_function = 'inline_map_reduce'
-        else:
-            map_reduce_function = 'map_reduce'
-            mr_args['out'] = output
-
-        results = getattr(queryset._collection, map_reduce_function)(
-                          map_f, reduce_f, **mr_args)
-
-        if map_reduce_function == 'map_reduce':
-            results = results.find()
-
-        if queryset._ordering:
-            results = results.sort(queryset._ordering)
-
-        for doc in results:
-            yield MapReduceDocument(queryset._document, queryset._collection,
-                                    doc['_id'], doc['value'])
-
-    def exec_js(self, code, *fields, **options):
-        """Execute a Javascript function on the server. A list of fields may be
-        provided, which will be translated to their correct names and supplied
-        as the arguments to the function. A few extra variables are added to
-        the function's scope: ``collection``, which is the name of the
-        collection in use; ``query``, which is an object representing the
-        current query; and ``options``, which is an object containing any
-        options specified as keyword arguments.
-
-        As fields in MongoEngine may use different names in the database (set
-        using the :attr:`db_field` keyword argument to a :class:`Field`
-        constructor), a mechanism exists for replacing MongoEngine field names
-        with the database field names in Javascript code. When accessing a
-        field, use square-bracket notation, and prefix the MongoEngine field
-        name with a tilde (~).
-
-        :param code: a string of Javascript code to execute
-        :param fields: fields that you will be using in your function, which
-            will be passed in to your function as arguments
-        :param options: options that you want available to the function
-            (accessed in Javascript through the ``options`` object)
-        """
-        queryset = self.clone()
-
-        code = queryset._sub_js_fields(code)
-
-        fields = [queryset._document._translate_field_name(f) for f in fields]
-        collection = queryset._document._get_collection_name()
-
-        scope = {
-            'collection': collection,
-            'options': options or {},
-        }
-
-        query = queryset._query
-        if queryset._where_clause:
-            query['$where'] = queryset._where_clause
-
-        scope['query'] = query
-        code = Code(code, scope=scope)
-
-        db = queryset._document._get_db()
-        return db.eval(code, *fields)
-
-    def where(self, where_clause):
-        """Filter ``QuerySet`` results with a ``$where`` clause (a Javascript
-        expression). Performs automatic field name substitution like
-        :meth:`mongoengine.queryset.Queryset.exec_js`.
-
-        .. note:: When using this mode of query, the database will call your
-                  function, or evaluate your predicate clause, for each object
-                  in the collection.
-
-        .. versionadded:: 0.5
-        """
-        queryset = self.clone()
-        where_clause = queryset._sub_js_fields(where_clause)
-        queryset._where_clause = where_clause
-        return queryset
+    # Basic aggregations
 
     def sum(self, field):
         """Sum over the values of the specified field.
@@ -1211,33 +1055,6 @@ class QuerySet(object):
         if result:
             return result[0]['total']
         return 0
-
-    def item_frequencies(self, field, normalize=False, map_reduce=True):
-        """Returns a dictionary of all items present in a field across
-        the whole queried set of documents, and their corresponding frequency.
-        This is useful for generating tag clouds, or searching documents.
-
-        .. note::
-
-            Can only do direct simple mappings and cannot map across
-            :class:`~mongoengine.fields.ReferenceField` or
-            :class:`~mongoengine.fields.GenericReferenceField` for more complex
-            counting a manual map reduce call would is required.
-
-        If the field is a :class:`~mongoengine.fields.ListField`, the items within
-        each list will be counted individually.
-
-        :param field: the field to use
-        :param normalize: normalize the results so they add to 1.0
-        :param map_reduce: Use map_reduce over exec_js
-
-        .. versionchanged:: 0.5 defaults to map_reduce and can handle embedded
-                            document lookups
-        """
-        if map_reduce:
-            return self._item_frequencies_map_reduce(field,
-                                                     normalize=normalize)
-        return self._item_frequencies_exec_js(field, normalize=normalize)
 
     # Iterator helpers
 
@@ -1302,11 +1119,6 @@ class QuerySet(object):
                 self._cursor_obj = self._collection.find(self._query,
                                                          **self._cursor_args)
 
-            # Apply "where" clauses to the cursor.
-            if self._where_clause:
-                where_clause = self._sub_js_fields(self._where_clause)
-                self._cursor_obj.where(where_clause)
-
             if self._ordering:
                 # Apply query ordering
                 self._cursor_obj.sort(self._ordering)
@@ -1369,118 +1181,6 @@ class QuerySet(object):
         return queryset
 
     # Helper Functions
-
-    def _item_frequencies_map_reduce(self, field, normalize=False):
-        map_func = """
-            function() {
-                var path = '{{~%(field)s}}'.split('.');
-                var field = this;
-
-                for (p in path) {
-                    if (typeof field != 'undefined')
-                       field = field[path[p]];
-                    else
-                       break;
-                }
-                if (field && field.constructor == Array) {
-                    field.forEach(function(item) {
-                        emit(item, 1);
-                    });
-                } else if (typeof field != 'undefined') {
-                    emit(field, 1);
-                } else {
-                    emit(null, 1);
-                }
-            }
-        """ % dict(field=field)
-        reduce_func = """
-            function(key, values) {
-                var total = 0;
-                var valuesSize = values.length;
-                for (var i=0; i < valuesSize; i++) {
-                    total += parseInt(values[i], 10);
-                }
-                return total;
-            }
-        """
-        values = self.map_reduce(map_func, reduce_func, 'inline')
-        frequencies = {}
-        for f in values:
-            key = f.key
-            if isinstance(key, float):
-                if int(key) == key:
-                    key = int(key)
-            frequencies[key] = int(f.value)
-
-        if normalize:
-            count = sum(frequencies.values())
-            frequencies = dict([(k, float(v) / count)
-                                for k, v in list(frequencies.items())])
-
-        return frequencies
-
-    def _item_frequencies_exec_js(self, field, normalize=False):
-        """Uses exec_js to execute"""
-        freq_func = """
-            function(path) {
-                var path = path.split('.');
-
-                var total = 0.0;
-                db[collection].find(query).forEach(function(doc) {
-                    var field = doc;
-                    for (p in path) {
-                        if (field)
-                            field = field[path[p]];
-                         else
-                            break;
-                    }
-                    if (field && field.constructor == Array) {
-                       total += field.length;
-                    } else {
-                       total++;
-                    }
-                });
-
-                var frequencies = {};
-                var types = {};
-                var inc = 1.0;
-
-                db[collection].find(query).forEach(function(doc) {
-                    field = doc;
-                    for (p in path) {
-                        if (field)
-                            field = field[path[p]];
-                        else
-                            break;
-                    }
-                    if (field && field.constructor == Array) {
-                        field.forEach(function(item) {
-                            frequencies[item] = inc + (isNaN(frequencies[item]) ? 0: frequencies[item]);
-                        });
-                    } else {
-                        var item = field;
-                        types[item] = item;
-                        frequencies[item] = inc + (isNaN(frequencies[item]) ? 0: frequencies[item]);
-                    }
-                });
-                return [total, frequencies, types];
-            }
-        """
-        total, data, types = self.exec_js(freq_func, field)
-        values = dict([(types.get(k), int(v)) for k, v in data.items()])
-
-        if normalize:
-            values = dict([(k, float(v) / total) for k, v in list(values.items())])
-
-        frequencies = {}
-        for k, v in values.items():
-            if isinstance(k, float):
-                if int(k) == k:
-                    k = int(k)
-
-            frequencies[k] = v
-
-        return frequencies
 
     def _fields_to_dbfields(self, fields):
         """Translate fields paths to its db equivalents"""

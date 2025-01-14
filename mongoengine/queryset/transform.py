@@ -24,8 +24,7 @@ MATCH_OPERATORS      = (COMPARISON_OPERATORS + GEO_OPERATORS +
                         STRING_OPERATORS + CUSTOM_OPERATORS)
 
 UPDATE_OPERATORS     = ('set', 'unset', 'inc', 'dec', 'pop', 'push',
-                        'push_all', 'pull', 'pull_all', 'add_to_set',
-                        'set_on_insert')
+                        'pull', 'pull_all', 'add_to_set', 'set_on_insert')
 
 
 def query(_doc_cls=None, _field_operation=False, **query):
@@ -155,7 +154,7 @@ def update(_doc_cls=None, **update):
         if parts[0] in UPDATE_OPERATORS:
             op = parts.pop(0)
             # Convert Pythonic names to Mongo equivalents
-            if op in ('push_all', 'pull_all'):
+            if op == 'pull_all':
                 op = op.replace('_all', 'All')
             elif op == 'dec':
                 # Support decrement by flipping a positive value's sign
