@@ -27,5 +27,5 @@ jobs:
   test-3.11:
     <<: *defaults
     docker:
-    - image: circleci/python:3.11
+    - image: cimg/python:3.11
     - image: mongo:3.2.19
