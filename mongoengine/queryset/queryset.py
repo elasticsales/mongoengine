@@ -639,7 +639,7 @@ class QuerySet(object):
     def in_bulk(self, object_ids):
         """Retrieve a set of documents by their ids.
 
-        :param object_ids: a list or tuple of ``ObjectId``\ s
+        :param object_ids: a list or tuple of ``ObjectId``'s
         :rtype: dict of ObjectIds as keys and collection-specific
                 Document subclasses as values.
 
@@ -931,7 +931,7 @@ class QuerySet(object):
 
     def explain(self, format=False):
         """Return an explain plan record for the
-        :class:`~mongoengine.queryset.QuerySet`\ 's cursor.
+        :class:`~mongoengine.queryset.QuerySet`'s cursor.
 
         :param format: format the plan before returning it
         """
@@ -1279,31 +1279,6 @@ class QuerySet(object):
                         data = obj.to_python(data)
             return data
         return clean(row)
-
-    def _sub_js_fields(self, code):
-        """When fields are specified with [~fieldname] syntax, where
-        *fieldname* is the Python name of a field, *fieldname* will be
-        substituted for the MongoDB name of the field (specified using the
-        :attr:`name` keyword argument in a field's constructor).
-        """
-        def field_sub(match):
-            # Extract just the field name, and look up the field objects
-            field_name = match.group(1).split('.')
-            fields = self._document._lookup_field(field_name)
-            # Substitute the correct name for the field into the javascript
-            return '["%s"]' % fields[-1].db_field
-
-        def field_path_sub(match):
-            # Extract just the field name, and look up the field objects
-            field_name = match.group(1).split('.')
-            fields = self._document._lookup_field(field_name)
-            # Substitute the correct name for the field into the javascript
-            return ".".join([f.db_field for f in fields])
-
-        code = re.sub('\[\s*~([A-z_][A-z_0-9.]+?)\s*\]', field_sub, code)
-        code = re.sub('\{\{\s*~([A-z_][A-z_0-9.]+?)\s*\}\}', field_path_sub,
-                      code)
-        return code
 
     # Deprecated
     def ensure_index(self, **kwargs):
