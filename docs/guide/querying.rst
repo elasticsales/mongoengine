@@ -357,21 +357,6 @@ To get the average (mean) of a field on a collection of documents, use
 
     mean_age = User.objects.average('age')
 
-As MongoDB provides native lists, MongoEngine provides a helper method to get a
-dictionary of the frequencies of items in lists across an entire collection --
-:meth:`~mongoengine.queryset.QuerySet.item_frequencies`. An example of its use
-would be generating "tag-clouds"::
-
-    class Article(Document):
-        tag = ListField(StringField())
-
-    # After adding some tagged articles...
-    tag_freqs = Article.objects.item_frequencies('tag', normalize=True)
-
-    from operator import itemgetter
-    top_tags = sorted(tag_freqs.items(), key=itemgetter(1), reverse=True)[:10]
-
-
 Query efficiency and performance
 ================================
 
