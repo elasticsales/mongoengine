@@ -1305,10 +1305,6 @@ class QuerySetTest(unittest.TestCase):
         post.reload()
         self.assertTrue('mongo' in post.tags)
 
-        BlogPost.objects.update_one(push_all__tags=['db', 'nosql'])
-        post.reload()
-        self.assertTrue('db' in post.tags and 'nosql' in post.tags)
-
         tags = post.tags[:-1]
         BlogPost.objects.update(pop__tags=1)
         post.reload()
@@ -1342,9 +1338,9 @@ class QuerySetTest(unittest.TestCase):
         post.reload()
         self.assertEqual(post.tags, ["code"])
 
-        BlogPost.objects.filter(id=post.id).update(push_all__tags=["mongodb", "code"])
+        BlogPost.objects.filter(id=post.id).update(push__tags="mongodb")
         post.reload()
-        self.assertEqual(post.tags, ["code", "mongodb", "code"])
+        self.assertEqual(post.tags, ["code", "mongodb"])
 
         BlogPost.objects(slug="test").update(pull__tags="code")
         post.reload()
