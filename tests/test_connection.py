@@ -42,9 +42,9 @@ class ConnectionTest(unittest.TestCase):
         c.admin.system.users.delete_many({})
         c.mongoenginetest.system.users.delete_many({})
 
-        c.admin.add_user("admin", "password")
+        c.admin.command("createUser", "admin", pwd="password", roles=["root"])
         c.admin.authenticate("admin", "password")
-        c.mongoenginetest.add_user("username", "password")
+        c.mongoenginetest.command("createUser", "username", pwd="password", roles=["read"])
 
         self.assertRaises(ConnectionError, connect, "testdb_uri_bad", host='mongodb://test:password@localhost')
 
