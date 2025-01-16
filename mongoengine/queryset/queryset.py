@@ -433,7 +433,15 @@ class QuerySet(object):
         if self._hint not in (-1, None):
             options["hint"] = self._hint
 
-        count = self._cursor.collection.count_documents(filter=self._query, **options)
+        if not self._query:
+            count = self._cursor.collection.estimated_document_count() - options.get(
+                "skip", 0
+            )
+            return min(count, options.get("limit", count))
+        else:
+            count = self._cursor.collection.count_documents(
+                filter=self._query, **options
+            )
 
         if with_limit_and_skip:
             self._len = count
