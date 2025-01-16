@@ -4,7 +4,9 @@ sys.path[0:0] = [""]
 import datetime
 import unittest
 
-import pymongo
+import pymongo.mongo_client
+import pymongo.database
+
 from bson.tz_util import utc
 
 import mongoengine.connection
