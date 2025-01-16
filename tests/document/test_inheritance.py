@@ -23,7 +23,7 @@ class InheritanceTest(unittest.TestCase):
         self.db = get_db()
 
     def tearDown(self):
-        for collection in self.db.collection_names():
+        for collection in self.db.list_collection_names():
             if 'system.' in collection:
                 continue
             self.db.drop_collection(collection)

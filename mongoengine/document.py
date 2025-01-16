@@ -147,7 +147,7 @@ class Document(BaseDocument, metaclass=TopLevelDocumentMetaclass):
                 max_size = cls._meta['max_size'] or 10000000  # 10MB default
                 max_documents = cls._meta['max_documents']
 
-                if collection_name in db.collection_names():
+                if collection_name in db.list_collection_names():
                     cls._collection = db[collection_name]
                     # The collection already exists, check if its capped
                     # options match the specified capped options
