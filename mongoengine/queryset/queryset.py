@@ -437,7 +437,7 @@ class QuerySet(object):
             count = self._cursor.collection.estimated_document_count() - options.get(
                 "skip", 0
             )
-            return min(count, options.get("limit", count))
+            count = min(count, options.get("limit", count))
         else:
             count = self._cursor.collection.count_documents(
                 filter=self._query, **options
