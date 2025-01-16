@@ -7,7 +7,6 @@ import warnings
 
 import pymongo
 from bson import json_util
-from bson.code import Code
 from pymongo.collection import ReturnDocument
 from pymongo.common import validate_read_preference
 from pymongo.read_concern import ReadConcern
@@ -433,7 +432,7 @@ class QuerySet(object):
         if self._hint not in (-1, None):
             options["hint"] = self._hint
 
-        if not self._query:
+        if not self._query and "hint" not in options:
             count = self._cursor.collection.estimated_document_count() - options.get(
                 "skip", 0
             )
