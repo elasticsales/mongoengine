@@ -421,9 +421,23 @@ class QuerySet(object):
         if self._none:
             return 0
 
+        options = {}
+
+        if with_limit_and_skip:
+            if self._limit is not None:
+                options["limit"] = self._limit
+            if self._skip is not None:
+                options["skip"] = self._skip
+        if self._hint not in (-1, None):
+            options["hint"] = self._hint
+
         if with_limit_and_skip and self._len is not None:
             return self._len
-        count = self._cursor.count(with_limit_and_skip=with_limit_and_skip)
+
+        count = self._cursor.collection.estimated_document_count(
+            query=self._query, **options
+        )
+
         if with_limit_and_skip:
             self._len = count
         return count

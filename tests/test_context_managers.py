@@ -196,7 +196,7 @@ class ContextManagersTest(unittest.TestCase):
             self.assertEqual(0, q)
 
             for i in range(1, 51):
-                db.test.find({}).count()
+                db.test.estimated_document_count({})
 
             self.assertEqual(50, q)
 
