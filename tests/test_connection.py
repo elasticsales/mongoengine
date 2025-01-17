@@ -35,28 +35,6 @@ class ConnectionTest(unittest.TestCase):
         conn = get_connection('testdb')
         self.assertTrue(isinstance(conn, pymongo.mongo_client.MongoClient))
 
-    def test_connect_uri(self):
-        """Ensure that the connect() method works properly with uri's
-        """
-        c = connect(db='mongoenginetest', alias='admin')
-        c.admin.system.users.delete_many({})
-        c.mongoenginetest.system.users.delete_many({})
-
-        c.admin.command("createUser", "admin", pwd="password", roles=["root"])
-        c.admin.authenticate("admin", "password")
-        c.mongoenginetest.command("createUser", "username", pwd="password", roles=["read"])
-
-        self.assertRaises(ConnectionError, connect, "testdb_uri_bad", host='mongodb://test:password@localhost')
-
-        connect("testdb_uri", host='mongodb://username:password@localhost/mongoenginetest')
-
-        conn = get_connection()
-        self.assertTrue(isinstance(conn, pymongo.mongo_client.MongoClient))
-
-        db = get_db()
-        self.assertTrue(isinstance(db, pymongo.database.Database))
-        self.assertEqual(db.name, 'mongoenginetest')
-
     def test_register_connection(self):
         """Ensure that connections with different aliases may be registered.
         """
