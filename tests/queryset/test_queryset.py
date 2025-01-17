@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 import pymongo
 from bson import ObjectId
-from nose.plugins.skip import SkipTest
 from pymongo.errors import ConfigurationError
 from pymongo.read_concern import ReadConcern
 from pymongo.read_preferences import ReadPreference

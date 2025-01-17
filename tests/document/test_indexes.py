@@ -6,7 +6,6 @@ sys.path[0:0] = [""]
 import os
 import pymongo
 
-from nose.plugins.skip import SkipTest
 from datetime import datetime
 
 from mongoengine import *

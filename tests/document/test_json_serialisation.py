@@ -4,7 +4,6 @@ sys.path[0:0] = [""]
 import unittest
 import uuid
 
-from nose.plugins.skip import SkipTest
 from datetime import datetime
 from bson import ObjectId
 

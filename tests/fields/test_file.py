@@ -9,7 +9,6 @@ import tempfile
 
 import gridfs
 
-from nose.plugins.skip import SkipTest
 from mongoengine import *
 from mongoengine.connection import get_db
 from mongoengine.python_support import PY3, b, StringIO
