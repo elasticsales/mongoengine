@@ -118,8 +118,6 @@ def get_connection(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
             conn_settings.pop('name', None)
             conn_settings.pop('slaves', None)
             conn_settings.pop('is_slave', None)
-            conn_settings.pop('username', None)
-            conn_settings.pop('password', None)
         else:
             # Get all the slave connections
             if 'slaves' in conn_settings:
@@ -155,10 +153,6 @@ def get_db(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
         conn = get_connection(alias)
         conn_settings = _connection_settings[alias]
         db = conn[conn_settings['name']]
-        # Authenticate if necessary
-        if conn_settings['username'] and conn_settings['password']:
-            db.authenticate(conn_settings['username'],
-                            conn_settings['password'])
         _dbs[alias] = db
     return _dbs[alias]
 
