@@ -8,6 +8,7 @@ import unittest
 import tempfile
 
 import gridfs
+import pytest
 
 from mongoengine import *
 from mongoengine.connection import get_db
@@ -260,10 +261,8 @@ class FileTest(unittest.TestCase):
         test_file = TestFile()
         self.assertFalse(test_file.the_file in [{"test": 1}])
 
+    @pytest.mark.skipif(not HAS_PIL, reason="PIL not installed")
     def test_image_field(self):
-        if not HAS_PIL:
-            raise SkipTest('PIL not installed')
-
         class TestImage(Document):
             image = ImageField()
 
@@ -294,10 +293,8 @@ class FileTest(unittest.TestCase):
 
         t.image.delete()
 
+    @pytest.mark.skipif(not HAS_PIL, reason="PIL not installed")
     def test_image_field_reassigning(self):
-        if not HAS_PIL:
-            raise SkipTest('PIL not installed')
-
         class TestFile(Document):
             the_file = ImageField()
         TestFile.drop_collection()
@@ -310,10 +307,8 @@ class FileTest(unittest.TestCase):
         test_file.save()
         self.assertEqual(test_file.the_file.size, (45, 101))
 
+    @pytest.mark.skipif(not HAS_PIL, reason="PIL not installed")
     def test_image_field_resize(self):
-        if not HAS_PIL:
-            raise SkipTest('PIL not installed')
-
         class TestImage(Document):
             image = ImageField(size=(185, 37))
 
@@ -333,10 +328,8 @@ class FileTest(unittest.TestCase):
 
         t.image.delete()
 
+    @pytest.mark.skipif(not HAS_PIL, reason="PIL not installed")
     def test_image_field_resize_force(self):
-        if not HAS_PIL:
-            raise SkipTest('PIL not installed')
-
         class TestImage(Document):
             image = ImageField(size=(185, 37, True))
 
@@ -356,10 +349,8 @@ class FileTest(unittest.TestCase):
 
         t.image.delete()
 
+    @pytest.mark.skipif(not HAS_PIL, reason="PIL not installed")
     def test_image_field_thumbnail(self):
-        if not HAS_PIL:
-            raise SkipTest('PIL not installed')
-
         class TestImage(Document):
             image = ImageField(thumbnail_size=(92, 18))
 
@@ -432,11 +423,8 @@ class FileTest(unittest.TestCase):
         self.assertEqual(putfile, copy.copy(putfile))
         self.assertEqual(putfile, copy.deepcopy(putfile))
 
+    @pytest.mark.skipif(not HAS_PIL, reason="PIL not installed")
     def test_get_image_by_grid_id(self):
-
-        if not HAS_PIL:
-            raise SkipTest('PIL not installed')
-
         class TestImage(Document):
 
             image1 = ImageField()

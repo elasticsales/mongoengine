@@ -579,13 +579,8 @@ class IndexesTest(unittest.TestCase):
 
         Log.drop_collection()
 
-        if pymongo.version_tuple[0] < 2 and pymongo.version_tuple[1] < 3:
-            raise SkipTest('pymongo needs to be 2.3 or higher for this test')
-
         connection = get_connection()
         version_array = connection.server_info()['versionArray']
-        if version_array[0] < 2 and version_array[1] < 2:
-            raise SkipTest('MongoDB needs to be 2.2 or higher for this test')
 
         Log.ensure_indexes()
         info = Log.objects._collection.index_information()
