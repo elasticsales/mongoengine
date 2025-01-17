@@ -16,6 +16,7 @@ from mongoengine import signals
 from mongoengine.common import _import_class
 from mongoengine.context_managers import set_read_write_concern, set_write_concern
 from mongoengine.errors import InvalidQueryError, NotUniqueError, OperationError
+from mongoengine.pymongo_support import LEGACY_JSON_OPTIONS
 from mongoengine.queryset import transform
 from mongoengine.queryset.field_list import QueryFieldList
 from mongoengine.queryset.visitor import Q, QNode
@@ -420,9 +421,23 @@ class QuerySet(object):
         if self._none:
             return 0
 
+        options = {}
+
+        if with_limit_and_skip:
+            if self._limit is not None:
+                options["limit"] = self._limit
+            if self._skip is not None:
+                options["skip"] = self._skip
+        if self._hint not in (-1, None):
+            options["hint"] = self._hint
+
         if with_limit_and_skip and self._len is not None:
             return self._len
-        count = self._cursor.count(with_limit_and_skip=with_limit_and_skip)
+
+        count = self._cursor.collection.estimated_document_count(
+            query=self._query, **options
+        )
+
         if with_limit_and_skip:
             self._len = count
         return count
@@ -1018,9 +1033,20 @@ class QuerySet(object):
 
     # JSON Helpers
 
-    def to_json(self):
+    def to_json(self, json_options=None):
         """Converts a queryset to JSON"""
-        return json_util.dumps(self.as_pymongo())
+        if json_options is None:
+            warnings.warn(
+                "No 'json_options' are specified! Falling back to "
+                "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
+                "For use with other MongoDB drivers specify the UUID "
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            json_options = LEGACY_JSON_OPTIONS
+        return json_util.dumps(self.as_pymongo(), json_options=json_options)
 
     def from_json(self, json_data):
         """Converts json data to unsaved objects"""

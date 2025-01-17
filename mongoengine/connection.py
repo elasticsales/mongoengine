@@ -1,6 +1,6 @@
+import warnings
 import pymongo
-from pymongo import (MongoClient, MongoReplicaSetClient, ReadPreference,
-                     uri_parser)
+from pymongo import MongoClient, ReadPreference, uri_parser
 
 __all__ = [
     'DEFAULT_CONNECTION_NAME',
@@ -36,6 +36,7 @@ def register_connection(
     slaves=None,
     username=None,
     password=None,
+    uuidrepresentation=None,
     **kwargs
 ):
     """Add a connection.
@@ -84,7 +85,22 @@ def register_connection(
         })
         if "replicaSet" in host:
             conn_settings['replicaSet'] = True
+        if "uuidrepresentation" in uri_dict:
+            uuidrepresentation = uri_dict.get('uuidrepresentation')
 
+    if uuidrepresentation is None:
+        warnings.warn(
+            "No uuidrepresentation is specified! Falling back to "
+            "'pythonLegacy' which is the default for pymongo 3.x. "
+            "For compatibility with other MongoDB drivers this should be "
+            "specified as 'standard' or '{java,csharp}Legacy' to work with "
+            "older drivers in those languages. This will be changed to "
+            "'unspecified' in a future release.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        uuidrepresentation = "pythonLegacy"
+    conn_settings['uuidrepresentation'] = uuidrepresentation
     conn_settings.update(kwargs)
     _connection_settings[alias] = conn_settings
 
@@ -118,8 +134,6 @@ def get_connection(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
             conn_settings.pop('name', None)
             conn_settings.pop('slaves', None)
             conn_settings.pop('is_slave', None)
-            conn_settings.pop('username', None)
-            conn_settings.pop('password', None)
         else:
             # Get all the slave connections
             if 'slaves' in conn_settings:
@@ -129,18 +143,16 @@ def get_connection(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
                 conn_settings['slaves'] = slaves
                 conn_settings.pop('read_preference', None)
 
-        connection_class = MongoClient
         if 'replicaSet' in conn_settings:
             conn_settings['hosts_or_uri'] = conn_settings.pop('host', None)
-            # Discard port since it can't be used on MongoReplicaSetClient
+            # Discard port since it can't be used with replicaSet
             conn_settings.pop('port', None)
             # Discard replicaSet if not base string
             if not isinstance(conn_settings['replicaSet'], str):
                 conn_settings.pop('replicaSet', None)
-            connection_class = MongoReplicaSetClient
 
         try:
-            _connections[alias] = connection_class(**conn_settings)
+            _connections[alias] = MongoClient(**conn_settings)
         except Exception as e:
             raise ConnectionError("Cannot connect to database %s :\n%s" % (alias, e))
     return _connections[alias]
@@ -155,10 +167,6 @@ def get_db(alias=DEFAULT_CONNECTION_NAME, reconnect=False):
         conn = get_connection(alias)
         conn_settings = _connection_settings[alias]
         db = conn[conn_settings['name']]
-        # Authenticate if necessary
-        if conn_settings['username'] and conn_settings['password']:
-            db.authenticate(conn_settings['username'],
-                            conn_settings['password'])
         _dbs[alias] = db
     return _dbs[alias]
 

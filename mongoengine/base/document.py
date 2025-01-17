@@ -1,4 +1,5 @@
 import operator
+import warnings
 from functools import partial
 
 import pymongo
@@ -8,6 +9,7 @@ from bson.son import SON
 from mongoengine.common import _import_class
 from mongoengine.errors import (ValidationError, LookUpError)
 from mongoengine.python_support import PY3, txt_type
+from mongoengine.pymongo_support import LEGACY_JSON_OPTIONS
 
 from mongoengine.base.proxy import DocumentProxy
 from mongoengine.base.common import get_document, ALLOW_INHERITANCE
@@ -193,9 +195,20 @@ class BaseDocument(object):
             message = "ValidationError (%s:%s) " % (self._class_name, pk)
             raise ValidationError(message, errors=errors)
 
-    def to_json(self):
+    def to_json(self, json_options=None):
         """Converts a document to JSON"""
-        return json_util.dumps(self.to_mongo())
+        if json_options is None:
+            warnings.warn(
+                "No 'json_options' are specified! Falling back to "
+                "LEGACY_JSON_OPTIONS with uuid_representation=PYTHON_LEGACY. "
+                "For use with other MongoDB drivers specify the UUID "
+                "representation to use. This will be changed to "
+                "uuid_representation=UNSPECIFIED in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            json_options = LEGACY_JSON_OPTIONS
+        return json_util.dumps(self.to_mongo(), json_options=json_options)
 
     @classmethod
     def from_json(cls, json_data):
